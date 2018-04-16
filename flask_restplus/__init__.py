@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
-from . import fields, reqparse, apidoc, inputs, cors
-from .api import Api  # noqa
-from .marshalling import marshal, marshal_with, marshal_with_field  # noqa
-from .mask import Mask
-from .model import Model, SchemaModel  # noqa
-from .namespace import Namespace  # noqa
-from .resource import Resource  # noqa
-from .errors import abort, RestError, SpecsError, ValidationError
-from .swagger import Swagger
+from . import apidoc, cors
 from .__about__ import __version__, __description__
+from .api import Api  # noqa
+from .errors import abort, RestError, SpecsError, ValidationError
+from .marshalling import marshal, marshal_with, marshal_with_field  # noqa
+from .resource import Resource  # noqa
+from .swagger import Swagger
+from .namespace import Namespace
 
 __all__ = (
     '__version__',
@@ -21,14 +19,9 @@ __all__ = (
     'marshal',
     'marshal_with',
     'marshal_with_field',
-    'Mask',
-    'Model',
-    'SchemaModel',
     'abort',
     'cors',
-    'fields',
-    'inputs',
-    'reqparse',
+    'Namespace'
     'RestError',
     'SpecsError',
     'Swagger',

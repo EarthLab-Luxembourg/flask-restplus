@@ -4,19 +4,16 @@ from __future__ import unicode_literals
 from collections import OrderedDict
 from functools import wraps
 
-from flask import request, current_app, has_app_context
-
-from .mask import Mask, apply as apply_mask
 from .utils import unpack
 
 
-def marshal(data, fields, envelope=None, skip_none=False, mask=None):
+def marshal(data, fields, envelope=None, skip_none=False):
     """Takes raw data (in the form of a dict, list, object) and a dict of
-    fields to output and filters the data based on those fields.
+    fields or a Schema to output and filters the data based on those fields/Schema.
 
     :param data: the actual object(s) from which the fields are taken from
     :param fields: a dict of whose keys will make up the final serialized
-                   response output
+                   response output or a Schema
     :param envelope: optional key that will be used to envelop the serialized
                      response
     :param bool skip_none: optional key will be used to eliminate fields
@@ -26,7 +23,7 @@ def marshal(data, fields, envelope=None, skip_none=False, mask=None):
 
     >>> from flask_restplus import fields, marshal
     >>> data = { 'a': 100, 'b': 'foo', 'c': None }
-    >>> mfields = { 'a': fields.Raw, 'c': fields.Raw, 'd': fields.Raw }
+    >>> mfields = { 'a': fields.str(), 'c': fields.Str(), 'd': fields.Str() }
 
     >>> marshal(data, mfields)
     OrderedDict([('a', 100), ('c', None), ('d', None)])
@@ -39,30 +36,12 @@ def marshal(data, fields, envelope=None, skip_none=False, mask=None):
 
     """
 
-    def make(cls):
-        if isinstance(cls, type):
-            return cls()
-        return cls
-
-    mask = mask or getattr(fields, '__mask__', None)
-    fields = getattr(fields, 'resolved', fields)
-    if mask:
-        fields = apply_mask(fields, mask, skip=True)
-
-    if isinstance(data, (list, tuple)):
-        out = [marshal(d, fields, skip_none=skip_none) for d in data]
-        if envelope:
-            out = OrderedDict([(envelope, out)])
-        return out
-
-    items = ((k, marshal(data, v, skip_none=skip_none) if isinstance(v, dict)
-              else make(v).output(k, data))
-             for k, v in fields.items())
+    schema = fields
+    out = schema.dump(data)
 
     if skip_none:
-        items = ((k, v) for k, v in items if v is not None and v != OrderedDict())
-
-    out = OrderedDict(items)
+        items = ((k, v) for k, v in out.items() if v is not None)
+        out = OrderedDict(items)
 
     if envelope:
         out = OrderedDict([(envelope, out)])
@@ -73,8 +52,9 @@ def marshal(data, fields, envelope=None, skip_none=False, mask=None):
 class marshal_with(object):
     """A decorator that apply marshalling to the return values of your methods.
 
-    >>> from flask_restplus import fields, marshal_with
-    >>> mfields = { 'a': fields.Raw }
+    >>> from flask_restplus import marshal_with
+    >>> from marshmallow import fields
+    >>> mfields = { 'a': fields.Str() }
     >>> @marshal_with(mfields)
     ... def get():
     ...     return { 'a': 100, 'b': 'foo' }
@@ -91,7 +71,7 @@ class marshal_with(object):
     >>> get()
     OrderedDict([('data', OrderedDict([('a', 100)]))])
 
-    >>> mfields = { 'a': fields.Raw, 'c': fields.Raw, 'd': fields.Raw }
+    >>> mfields = { 'a': fields.Str(), 'c': fields.Str(), 'd': fields.Str() }
     >>> @marshal_with(mfields, skip_none=True)
     ... def get():
     ...     return { 'a': 100, 'b': 'foo', 'c': None }
@@ -102,31 +82,32 @@ class marshal_with(object):
 
     see :meth:`flask_restplus.marshal`
     """
-    def __init__(self, fields, envelope=None, skip_none=False, mask=None):
+
+    def __init__(self, fields, envelope=None, skip_none=False):
         """
         :param fields: a dict of whose keys will make up the final
-                       serialized response output
+                       serialized response output or a Schema
         :param envelope: optional key that will be used to envelop the serialized
                          response
         """
         self.fields = fields
         self.envelope = envelope
         self.skip_none = skip_none
-        self.mask = Mask(mask, skip=True)
 
     def __call__(self, f):
         @wraps(f)
         def wrapper(*args, **kwargs):
             resp = f(*args, **kwargs)
-            mask = self.mask
-            if has_app_context():
-                mask_header = current_app.config['RESTPLUS_MASK_HEADER']
-                mask = request.headers.get(mask_header) or mask
+            # mask = self.mask
+            # if has_app_context():
+            #     mask_header = current_app.config['RESTPLUS_MASK_HEADER']
+            #     mask = request.headers.get(mask_header) or mask
             if isinstance(resp, tuple):
                 data, code, headers = unpack(resp)
-                return marshal(data, self.fields, self.envelope, self.skip_none, mask), code, headers
+                return marshal(data, self.fields, self.envelope, self.skip_none), code, headers
             else:
-                return marshal(resp, self.fields, self.envelope, self.skip_none, mask)
+                return marshal(resp, self.fields, self.envelope, self.skip_none)
+
         return wrapper
 
 
@@ -134,8 +115,9 @@ class marshal_with_field(object):
     """
     A decorator that formats the return values of your methods with a single field.
 
-    >>> from flask_restplus import marshal_with_field, fields
-    >>> @marshal_with_field(fields.List(fields.Integer))
+    >>> from flask_restplus import marshal_with_field
+    >>> from marshmallow import fields
+    >>> @marshal_with_field(fields.List(fields.Str))
     ... def get():
     ...     return ['1', 2, 3.0]
     ...
@@ -144,6 +126,7 @@ class marshal_with_field(object):
 
     see :meth:`flask_restplus.marshal_with`
     """
+
     def __init__(self, field):
         """
         :param field: a single field with which to marshal the output.
@@ -160,7 +143,8 @@ class marshal_with_field(object):
 
             if isinstance(resp, tuple):
                 data, code, headers = unpack(resp)
-                return self.field.format(data), code, headers
-            return self.field.format(resp)
+                # Wrap data into an object to be able to use field serialization func
+                return self.field.serialize('v', {'v': data}), code, headers
+            return self.field.serialize('v', {'v': resp})
 
         return wrapper

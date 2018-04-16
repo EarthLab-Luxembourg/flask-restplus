@@ -25,7 +25,6 @@ from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAc
 from werkzeug.wrappers import BaseResponse
 
 from . import apidoc
-from .mask import ParseError, MaskError
 from .namespace import Namespace
 from .postman import PostmanCollectionV1
 from .resource import Resource
@@ -113,12 +112,9 @@ class Api(object):
         self._default_error_handler = None
         self.tags = tags or []
 
-        self.error_handlers = {
-            ParseError: mask_parse_error_handler,
-            MaskError: mask_error_handler,
-        }
+        self.error_handlers = {}
         self._schema = None
-        self.models = {}
+        self.schemas = {}
         self._refresolver = None
         self.format_checker = format_checker
         self.namespaces = []
@@ -202,8 +198,8 @@ class Api(object):
 
         self._register_apidoc(app)
         self._validate = self._validate if self._validate is not None else app.config.get('RESTPLUS_VALIDATE', False)
-        app.config.setdefault('RESTPLUS_MASK_HEADER', 'X-Fields')
-        app.config.setdefault('RESTPLUS_MASK_SWAGGER', True)
+        # app.config.setdefault('RESTPLUS_MASK_HEADER', 'X-Fields')
+        # app.config.setdefault('RESTPLUS_MASK_SWAGGER', True)
 
     def __getattr__(self, name):
         try:
@@ -414,9 +410,9 @@ class Api(object):
         # Register resources
         for resource, urls, kwargs in ns.resources:
             self.register_resource(ns, resource, *self.ns_urls(ns, urls), **kwargs)
-        # Register models
-        for name, definition in ns.models.items():
-            self.models[name] = definition
+        # Register schemas
+        for name, schema in ns.schemas.items():
+            self.schemas[name] = schema
         # Register error handlers
         for exception, handler in ns.error_handlers.items():
             self.error_handlers[exception] = handler
@@ -834,6 +830,14 @@ class Api(object):
             endpoint = '{0}.{1}'.format(self.blueprint.name, endpoint)
         return url_for(endpoint, **values)
 
+    def has_schema(self, schema):
+        '''
+        Returns True if the given schema has been registered to this API
+        :param schema: Marshmallow schema
+        :return: True if the given schema has been registered to this API, false otherwise
+        '''
+        return schema in list(self.schemas.values())
+
 
 class SwaggerView(Resource):
     '''Render the Swagger specifications as JSON'''
@@ -843,13 +847,3 @@ class SwaggerView(Resource):
 
     def mediatypes(self):
         return ['application/json']
-
-
-def mask_parse_error_handler(error):
-    '''When a mask can't be parsed'''
-    return {'message': 'Mask parse error: {0}'.format(error)}, HTTPStatus.BAD_REQUEST
-
-
-def mask_error_handler(error):
-    '''When any error occurs on mask'''
-    return {'message': 'Mask error: {0}'.format(error)}, HTTPStatus.BAD_REQUEST

@@ -3,20 +3,19 @@ from __future__ import unicode_literals, absolute_import
 
 import itertools
 import re
-
-from inspect import isclass, getdoc
 from collections import OrderedDict, Hashable
-from six import string_types, itervalues, iteritems, iterkeys
+from inspect import getdoc
 
+from apispec import APISpec
+from apispec.ext.marshmallow import swagger
 from flask import current_app
+from marshmallow import Schema
+from marshmallow.utils import is_instance_or_subclass
+from six import string_types, iteritems, iterkeys
 from werkzeug.routing import parse_rule
 
-from . import fields
-from .model import Model, ModelBase
-from .reqparse import RequestParser
-from .utils import merge, not_none, not_none_sorted
 from ._http import HTTPStatus
-
+from .utils import merge, not_none
 
 #: Maps Flask/Werkzeug rooting types to Swagger ones
 PATH_TYPES = {
@@ -25,7 +24,6 @@ PATH_TYPES = {
     'string': 'string',
     'default': 'string',
 }
-
 
 #: Maps Python primitives types to Swagger ones
 PY_TYPES = {
@@ -42,12 +40,6 @@ DEFAULT_RESPONSE_DESCRIPTION = 'Success'
 DEFAULT_RESPONSE = {'description': DEFAULT_RESPONSE_DESCRIPTION}
 
 RE_RAISES = re.compile(r'^:raises\s+(?P<name>[\w\d_]+)\s*:\s*(?P<description>.*)$', re.MULTILINE)
-
-
-def ref(model):
-    '''Return a reference to model in definitions'''
-    name = model.name if isinstance(model, ModelBase) else model
-    return {'$ref': '#/definitions/{0}'.format(name)}
 
 
 def _v(value):
@@ -132,9 +124,10 @@ class Swagger(object):
     '''
     A Swagger documentation wrapper for an API instance.
     '''
+
     def __init__(self, api):
+        self.spec = None
         self.api = api
-        self._registered_models = {}
 
     def as_dict(self):
         '''
@@ -143,13 +136,8 @@ class Swagger(object):
         :returns: the full Swagger specification in a serializable format
         :rtype: dict
         '''
-        basepath = self.api.base_path
-        if len(basepath) > 1 and basepath.endswith('/'):
-            basepath = basepath[:-1]
-        infos = {
-            'title': _v(self.api.title),
-            'version': _v(self.api.version),
-        }
+        infos = {}
+
         if self.api.description:
             infos['description'] = _v(self.api.description)
         if self.api.terms_url:
@@ -165,32 +153,39 @@ class Swagger(object):
             if self.api.license_url:
                 infos['license']['url'] = _v(self.api.license_url)
 
-        paths = {}
-        tags = self.extract_tags(self.api)
+        basepath = self.api.base_path
+        if len(basepath) > 1 and basepath.endswith('/'):
+            basepath = basepath[:-1]
 
-        # register errors
-        responses = self.register_errors()
+        self.spec = APISpec(
+            title=_v(self.api.title),
+            version=_v(self.api.version),
+            info=infos,
+            basepath=basepath,
+            produces=list(iterkeys(self.api.representations)),
+            consumes=['application/json'],
+            securityDefinitions=self.api.authorizations or None,
+            security=self.security_requirements(self.api.security) or None,
+            host=self.get_host(),
+            responses=self.register_errors(),
+            plugins=('apispec.ext.marshmallow',)
+        )
 
+        # Extract API tags
+        for tag in self.extract_tags(self.api):
+            self.spec.add_tag(tag)
+
+        # Extract API definitions
+        for name, model in self.api.schemas.items():
+            self.spec.definition(name, schema=model)
+
+        # Extract API paths
         for ns in self.api.namespaces:
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
-                    paths[extract_path(url)] = self.serialize_resource(ns, resource, url, kwargs)
+                    self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
 
-        specs = {
-            'swagger': '2.0',
-            'basePath': basepath,
-            'paths': not_none_sorted(paths),
-            'info': infos,
-            'produces': list(iterkeys(self.api.representations)),
-            'consumes': ['application/json'],
-            'securityDefinitions': self.api.authorizations or None,
-            'security': self.security_requirements(self.api.security) or None,
-            'tags': tags,
-            'definitions': self.serialize_definitions() or None,
-            'responses': responses or None,
-            'host': self.get_host(),
-        }
-        return not_none(specs)
+        return self.spec.to_dict()
 
     def get_host(self):
         hostname = current_app.config.get('SERVER_NAME', None) or None
@@ -227,7 +222,8 @@ class Swagger(object):
         if doc is False:
             return False
         doc['name'] = resource.__name__
-        params = merge(self.expected_params(doc), doc.get('params', OrderedDict()))
+        expect = self.expected_params(doc)
+        params = doc.get('params', OrderedDict())
         params = merge(params, extract_path_params(url))
         doc['params'] = params
         for method in [m.lower() for m in resource.methods or []]:
@@ -240,47 +236,38 @@ class Swagger(object):
             method_doc = merge(method_doc, getattr(method_impl, '__apidoc__', OrderedDict()))
             if method_doc is not False:
                 method_doc['docstring'] = parse_docstring(method_impl)
-                method_params = self.expected_params(method_doc)
-                method_params = merge(method_params, method_doc.get('params', {}))
-                inherited_params = OrderedDict((k, v) for k, v in iteritems(params) if k in method_params)
+                method_params = method_doc.get('params', {})
+                inherited_params = OrderedDict((k, v) for k, v in iteritems(params) if k in params)
                 method_doc['params'] = merge(inherited_params, method_params)
+                method_doc['expect'] = expect + self.expected_params(method_doc)
             doc[method] = method_doc
         return doc
 
     def expected_params(self, doc):
-        params = OrderedDict()
+        '''Parse and returns the expected params from the given doc'''
+        params = []
         if 'expect' not in doc:
             return params
 
-        for expect in doc.get('expect', []):
-            if isinstance(expect, RequestParser):
-                parser_params = OrderedDict((p['name'], p) for p in expect.__schema__)
-                params.update(parser_params)
-            elif isinstance(expect, ModelBase):
-                params['payload'] = not_none({
-                    'name': 'payload',
-                    'required': True,
-                    'in': 'body',
-                    'schema': self.serialize_schema(expect),
-                })
-            elif isinstance(expect, (list, tuple)):
-                if len(expect) == 2:
-                    # this is (payload, description) shortcut
-                    model, description = expect
-                    params['payload'] = not_none({
-                        'name': 'payload',
-                        'required': True,
-                        'in': 'body',
-                        'schema': self.serialize_schema(model),
-                        'description': description
-                    })
-                else:
-                    params['payload'] = not_none({
-                        'name': 'payload',
-                        'required': True,
-                        'in': 'body',
-                        'schema': self.serialize_schema(expect),
-                    })
+        for expect in doc['expect']:
+            schema = expect.get('argmap', {})
+            if not is_instance_or_subclass(schema, Schema) and callable(schema):
+                schema = schema(request=None)
+
+            if is_instance_or_subclass(schema, Schema):
+                if not self.api.has_schema(schema):
+                    raise ValueError('Schema {0} not registered'.format(schema))
+                converter = swagger.schema2parameters
+            else:
+                converter = swagger.fields2parameters
+
+            options = {'spec': self.spec}
+            locations = options.pop('locations', None)
+            if locations:
+                options['default_in'] = locations[0]
+
+            params.extend(converter(schema, **options))
+
         return params
 
     def register_errors(self):
@@ -294,7 +281,7 @@ class Swagger(object):
             self.process_headers(response, apidoc)
             if 'responses' in apidoc:
                 _, model = list(apidoc['responses'].values())[0]
-                response['schema'] = self.serialize_schema(model)
+                response['schema'] = model
             responses[exception.__name__] = not_none(response)
         return responses
 
@@ -302,9 +289,7 @@ class Swagger(object):
         doc = self.extract_resource_doc(resource, url)
         if doc is False:
             return
-        path = {
-            'parameters': self.parameters_for(doc) or None
-        }
+        path = {}
         for method in [m.lower() for m in resource.methods or []]:
             methods = [m.lower() for m in kwargs.get('methods', [])]
             if doc[method] is False or methods and method not in methods:
@@ -322,6 +307,7 @@ class Swagger(object):
             'parameters': self.parameters_for(doc[method]) or None,
             'security': self.security_for(doc, method),
         }
+
         # Handle 'produces' mimetypes documentation
         if 'produces' in doc[method]:
             operation['produces'] = doc[method]['produces']
@@ -365,7 +351,7 @@ class Swagger(object):
         return doc[method]['id'] if 'id' in doc[method] else self.api.default_id(doc['name'], method)
 
     def parameters_for(self, doc):
-        params = []
+        params = doc.get('expect', [])
         for name, param in iteritems(doc['params']):
             param['name'] = name
             if 'type' not in param and 'schema' not in param:
@@ -386,18 +372,18 @@ class Swagger(object):
             params.append(param)
 
         # Handle fields mask
-        mask = doc.get('__mask__')
-        if (mask and current_app.config['RESTPLUS_MASK_SWAGGER']):
-            param = {
-                'name': current_app.config['RESTPLUS_MASK_HEADER'],
-                'in': 'header',
-                'type': 'string',
-                'format': 'mask',
-                'description': 'An optional fields mask',
-            }
-            if isinstance(mask, string_types):
-                param['default'] = mask
-            params.append(param)
+        # mask = doc.get('__mask__')
+        # if (mask and current_app.config['RESTPLUS_MASK_SWAGGER']):
+        #     param = {
+        #         'name': current_app.config['RESTPLUS_MASK_HEADER'],
+        #         'in': 'header',
+        #         'type': 'string',
+        #         'format': 'mask',
+        #         'description': 'An optional fields mask',
+        #     }
+        #     if isinstance(mask, string_types):
+        #         param['default'] = mask
+        #     params.append(param)
 
         return params
 
@@ -413,9 +399,9 @@ class Swagger(object):
                         model = None
                         kwargs = {}
                     elif len(response) == 3:
-                        description, model, kwargs = response
+                        description, schema, kwargs = response
                     elif len(response) == 2:
-                        description, model = response
+                        description, schema = response
                         kwargs = {}
                     else:
                         raise ValueError('Unsupported response specification')
@@ -424,14 +410,14 @@ class Swagger(object):
                         responses[code].update(description=description)
                     else:
                         responses[code] = {'description': description}
-                    if model:
-                        responses[code]['schema'] = self.serialize_schema(model)
+                    if schema:
+                        responses[code]['schema'] = schema
                     self.process_headers(responses[code], doc, method, kwargs.get('headers'))
             if 'model' in d:
                 code = str(d.get('default_code', HTTPStatus.OK))
                 if code not in responses:
                     responses[code] = self.process_headers(DEFAULT_RESPONSE.copy(), doc, method)
-                responses[code]['schema'] = self.serialize_schema(d['model'])
+                responses[code]['schema'] = d['model']
 
             if 'docstring' in d:
                 for name, description in d['docstring']['raises'].items():
@@ -459,62 +445,6 @@ class Swagger(object):
             )
         return response
 
-    def serialize_definitions(self):
-        return dict(
-            (name, model.__schema__)
-            for name, model in iteritems(self._registered_models)
-        )
-
-    def serialize_schema(self, model):
-        if isinstance(model, (list, tuple)):
-            model = model[0]
-            return {
-                'type': 'array',
-                'items': self.serialize_schema(model),
-            }
-
-        elif isinstance(model, ModelBase):
-            self.register_model(model)
-            return ref(model)
-
-        elif isinstance(model, string_types):
-            self.register_model(model)
-            return ref(model)
-
-        elif isclass(model) and issubclass(model, fields.Raw):
-            return self.serialize_schema(model())
-
-        elif isinstance(model, fields.Raw):
-            return model.__schema__
-
-        elif isinstance(model, (type, type(None))) and model in PY_TYPES:
-            return {'type': PY_TYPES[model]}
-
-        raise ValueError('Model {0} not registered'.format(model))
-
-    def register_model(self, model):
-        name = model.name if isinstance(model, ModelBase) else model
-        if name not in self.api.models:
-            raise ValueError('Model {0} not registered'.format(name))
-        specs = self.api.models[name]
-        self._registered_models[name] = specs
-        if isinstance(specs, ModelBase):
-            for parent in specs.__parents__:
-                self.register_model(parent)
-        if isinstance(specs, Model):
-            for field in itervalues(specs):
-                self.register_field(field)
-        return ref(model)
-
-    def register_field(self, field):
-        if isinstance(field, fields.Polymorph):
-            for model in itervalues(field.mapping):
-                self.register_model(model)
-        elif isinstance(field, fields.Nested):
-            self.register_model(field.nested)
-        elif isinstance(field, fields.List):
-            self.register_field(field.container)
-
     def security_for(self, doc, method):
         security = None
         if 'security' in doc:
@@ -537,7 +467,7 @@ class Swagger(object):
             return []
 
     def security_requirement(self, value):
-        if isinstance(value, (string_types)):
+        if isinstance(value, string_types):
             return {value: []}
         elif isinstance(value, dict):
             return dict(

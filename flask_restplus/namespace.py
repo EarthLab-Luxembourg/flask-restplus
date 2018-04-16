@@ -2,17 +2,15 @@
 from __future__ import unicode_literals
 
 import inspect
-import six
-import warnings
 
+import marshmallow as ma
+import six
 from flask.views import http_method_funcs
 
+from ._http import HTTPStatus
 from .errors import abort
 from .marshalling import marshal, marshal_with
-from .model import Model, SchemaModel
-from .reqparse import RequestParser
 from .utils import merge
-from ._http import HTTPStatus
 
 
 class Namespace(object):
@@ -28,6 +26,7 @@ class Namespace(object):
     :param bool validate: Whether or not to perform validation on this namespace
     :param Api api: an optional API to attache to the namespace
     '''
+
     def __init__(self, name, description=None, path=None, decorators=None, validate=None, **kwargs):
         self.name = name
         self.description = description
@@ -35,7 +34,7 @@ class Namespace(object):
 
         self._schema = None
         self._validate = validate
-        self.models = {}
+        self.schemas = {}
         self.urls = {}
         self.decorators = decorators if decorators else []
         self.resources = []
@@ -80,29 +79,35 @@ class Namespace(object):
         '''
         A decorator to route resources.
         '''
+
         def wrapper(cls):
             doc = kwargs.pop('doc', None)
             if doc is not None:
                 self._handle_api_doc(cls, doc)
             self.add_resource(cls, *urls, **kwargs)
             return cls
+
         return wrapper
 
     def _handle_api_doc(self, cls, doc):
         if doc is False:
             cls.__apidoc__ = False
             return
+        current_doc = getattr(cls, '__apidoc__', {})
         unshortcut_params_description(doc)
-        handle_deprecations(doc)
         for http_method in http_method_funcs:
             if http_method in doc:
+
                 if doc[http_method] is False:
                     continue
                 unshortcut_params_description(doc[http_method])
-                handle_deprecations(doc[http_method])
-                if 'expect' in doc[http_method] and not isinstance(doc[http_method]['expect'], (list, tuple)):
-                    doc[http_method]['expect'] = [doc[http_method]['expect']]
-        cls.__apidoc__ = merge(getattr(cls, '__apidoc__', {}), doc)
+        # Ensure expect is always a list
+        if 'expect' in doc and not isinstance(doc['expect'], list):
+            doc['expect'] = [doc['expect']]
+        # Merge providing expected args with current one cause 'merge' call will override
+        if 'expect' in current_doc:
+            doc['expect'].extend(current_doc['expect'])
+        cls.__apidoc__ = merge(current_doc, doc)
 
     def doc(self, shortcut=None, **kwargs):
         '''A decorator to add some api documentation to the decorated object'''
@@ -113,6 +118,7 @@ class Namespace(object):
         def wrapper(documented):
             self._handle_api_doc(documented, kwargs if show else False)
             return documented
+
         return wrapper
 
     def hide(self, func):
@@ -127,114 +133,76 @@ class Namespace(object):
         '''
         abort(*args, **kwargs)
 
-    def add_model(self, name, definition):
-        self.models[name] = definition
+    def register_schema(self, name, schema: ma.Schema = None) -> ma.Schema:
+        '''
+        Register the given Schema for this namespace
+        :param name: Name of the schema
+        :param ma.Schema schema: Schema
+        :return ma.Schema: The given schema
+        '''
+        self.schemas[name] = schema
         for api in self.apis:
-            api.models[name] = definition
-        return definition
+            api.schemas[name] = schema
+        return schema
 
-    def model(self, name=None, model=None, mask=None, **kwargs):
+    def expect_kwargs(self, *args, **kwargs):
         '''
-        Register a model
+        A decorator to specify expected inputs.
 
-        .. seealso:: :class:`Model`
+        Once decorated function will be called, parsed arguments will be
+        injected into the view func or method as keyword arguments
+
+        This is a shortcut to :meth:`expect_args` with ``as_kwargs=True``.
         '''
-        model = Model(name, model, mask=mask)
-        model.__apidoc__.update(kwargs)
-        return self.add_model(name, model)
+        kwargs['as_kwargs'] = True
+        return self.expect_args(*args, **kwargs)
 
-    def schema_model(self, name=None, schema=None):
+    def expect_args(self, argmap, locations: tuple = None, as_kwargs: bool = False, validate: callable = None):
         '''
-        Register a model
+        A decorator to specify expected inputs.
 
-        .. seealso:: :class:`Model`
+        Once decorated function is called, parsed arguments will be inject into the view function or method.
+
+        :param argmap: Either a `marshmallow.Schema`, a `dict`
+            of argname -> `marshmallow.fields.Field` pairs, or a callable
+            which accepts a request and returns a `marshmallow.Schema`.
+        :param tuple locations: Where on the request to search for values.
+        :param bool as_kwargs: Whether to insert arguments as keyword arguments.
+        :param callable validate: Validation function that receives the dictionary
+            of parsed arguments. If the function returns ``False``, the parser
+            will raise a :exc:`ValidationError`.
         '''
-        model = SchemaModel(name, schema)
-        return self.add_model(name, model)
-
-    def extend(self, name, parent, fields):
-        '''
-        Extend a model (Duplicate all fields)
-
-        :deprecated: since 0.9. Use :meth:`clone` instead
-        '''
-        if isinstance(parent, list):
-            parents = parent + [fields]
-            model = Model.extend(name, *parents)
-        else:
-            model = Model.extend(name, parent, fields)
-        return self.add_model(name, model)
-
-    def clone(self, name, *specs):
-        '''
-        Clone a model (Duplicate all fields)
-
-        :param str name: the resulting model name
-        :param specs: a list of models from which to clone the fields
-
-        .. seealso:: :meth:`Model.clone`
-
-        '''
-        model = Model.clone(name, *specs)
-        return self.add_model(name, model)
-
-    def inherit(self, name, *specs):
-        '''
-        Inherit a modal (use the Swagger composition pattern aka. allOf)
-
-        .. seealso:: :meth:`Model.inherit`
-        '''
-        model = Model.inherit(name, *specs)
-        return self.add_model(name, model)
-
-    def expect(self, *inputs, **kwargs):
-        '''
-        A decorator to Specify the expected input model
-
-        :param ModelBase|Parse inputs: An expect model or request parser
-        :param bool validate: whether to perform validation or not
-
-        '''
-        expect = []
-        params = {
-            'validate': kwargs.get('validate', None) or self._validate,
-            'expect': expect
-        }
-        for param in inputs:
-            expect.append(param)
-        return self.doc(**params)
-
-    def parser(self):
-        '''Instanciate a :class:`~RequestParser`'''
-        return RequestParser()
+        return self.doc(expect={
+            'argmap': argmap,
+            'locations': locations,
+            'as_kwargs': as_kwargs,
+            'validate': validate
+        })
 
     def as_list(self, field):
         '''Allow to specify nested lists for documentation'''
         field.__apidoc__ = merge(getattr(field, '__apidoc__', {}), {'as_list': True})
         return field
 
-    def marshal_with(self, fields, as_list=False, code=HTTPStatus.OK, description=None, **kwargs):
+    def marshal_with(self, argmap, code=HTTPStatus.OK, description=None, **kwargs):
         '''
         A decorator specifying the fields to use for serialization.
 
-        :param bool as_list: Indicate that the return type is a list (for the documentation)
         :param int code: Optionally give the expected HTTP response code if its different from 200
 
         '''
+
         def wrapper(func):
             doc = {
                 'responses': {
-                    code: (description, [fields]) if as_list else (description, fields)
+                    code: (description, argmap)
                 },
-                '__mask__': kwargs.get('mask', True),  # Mask values can't be determined outside app context
+                # '__mask__': kwargs.get('mask', True),  # Mask values can't be determined outside app context
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
-            return marshal_with(fields, **kwargs)(func)
-        return wrapper
+            return marshal_with(argmap, **kwargs)(func)
 
-    def marshal_list_with(self, fields, **kwargs):
-        '''A shortcut decorator for :meth:`~Api.marshal_with` with ``as_list=True``'''
-        return self.marshal_with(fields, True, **kwargs)
+        return wrapper
 
     def marshal(self, *args, **kwargs):
         '''A shortcut to the :func:`marshal` helper'''
@@ -247,6 +215,7 @@ class Namespace(object):
             def wrapper(func):
                 self.error_handlers[exception] = func
                 return func
+
             return wrapper
         else:
             # Register the default error handler
@@ -266,16 +235,16 @@ class Namespace(object):
         param['description'] = description
         return self.doc(params={name: param})
 
-    def response(self, code, description, model=None, **kwargs):
+    def response(self, code, description, schema=None, **kwargs):
         '''
         A decorator to specify one of the expected responses
 
         :param int code: the HTTP status code
         :param str description: a small description about the response
-        :param ModelBase model: an optional response model
+        :param Schema schema: an optional response schema
 
         '''
-        return self.doc(responses={code: (description, model, kwargs)})
+        return self.doc(responses={code: (description, schema, kwargs)})
 
     def header(self, name, description=None, **kwargs):
         '''
@@ -317,11 +286,3 @@ def unshortcut_params_description(data):
             if isinstance(description, six.string_types):
                 data['params'][name] = {'description': description}
 
-
-def handle_deprecations(doc):
-    if 'parser' in doc:
-        warnings.warn('The parser attribute is deprecated, use expect instead', DeprecationWarning, stacklevel=2)
-        doc['expect'] = doc.get('expect', []) + [doc.pop('parser')]
-    if 'body' in doc:
-        warnings.warn('The body attribute is deprecated, use expect instead', DeprecationWarning, stacklevel=2)
-        doc['expect'] = doc.get('expect', []) + [doc.pop('body')]
