@@ -6,6 +6,9 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_EVEN
 from email.utils import formatdate
 
+import base64
+
+import binascii
 from six import iteritems, itervalues, text_type, string_types
 from six.moves.urllib.parse import urlparse, urlunparse
 
@@ -17,7 +20,6 @@ from .errors import RestError
 from .marshalling import marshal
 from .utils import camel_to_dash, not_none
 
-
 __all__ = ('Raw', 'String', 'FormattedString', 'Url', 'DateTime', 'Date',
            'Boolean', 'Integer', 'Float', 'Arbitrary', 'Fixed',
            'Nested', 'List', 'ClassName', 'Polymorph',
@@ -28,6 +30,7 @@ class MarshallingError(RestError):
     '''
     This is an encapsulating Exception in case of marshalling error.
     '''
+
     def __init__(self, underlying_exception):
         # just put the contextual representation of the error to hint on what
         # went wrong without exposing internals
@@ -109,7 +112,7 @@ class Raw(object):
     __schema_example__ = None
 
     def __init__(self, default=None, attribute=None, title=None, description=None,
-                 required=None, readonly=None, example=None, mask=None, **kwargs):
+                 required=None, readonly=None, example=None, mask=None, nullable=None, **kwargs):
         self.attribute = attribute
         self.default = default
         self.title = title
@@ -118,6 +121,7 @@ class Raw(object):
         self.readonly = readonly
         self.example = example or self.__schema_example__
         self.mask = mask
+        self.nullable = nullable
 
     def format(self, value):
         '''
@@ -171,7 +175,7 @@ class Raw(object):
 
     def schema(self):
         return {
-            'type': self.__schema_type__,
+            'type': [self.__schema_type__, 'null'] if self.nullable else self.__schema_type__,
             'format': self.__schema_format__,
             'title': self.title,
             'description': self.description,
@@ -250,6 +254,7 @@ class List(Raw):
 
     :param cls_or_instance: The field type the list will contain.
     '''
+
     def __init__(self, cls_or_instance, **kwargs):
         self.min_items = kwargs.pop('min_items', None)
         self.max_items = kwargs.pop('max_items', None)
@@ -277,7 +282,7 @@ class List(Raw):
 
         return [
             self.container.output(idx,
-                val if (isinstance(val, dict) or is_attr(val)) and not is_nested else value)
+                                  val if (isinstance(val, dict) or is_attr(val)) and not is_nested else value)
             for idx, val in enumerate(value)
         ]
 
@@ -362,6 +367,7 @@ class String(StringMixin, Raw):
     be converted to :class:`unicode` in python2 and :class:`str` in
     python3.
     '''
+
     def __init__(self, *args, **kwargs):
         self.enum = kwargs.pop('enum', None)
         self.discriminator = kwargs.pop('discriminator', None)
@@ -432,6 +438,7 @@ class Fixed(NumberMixin, Raw):
     '''
     A decimal number with a fixed precision.
     '''
+
     def __init__(self, decimals=5, **kwargs):
         super(Fixed, self).__init__(**kwargs)
         self.precision = Decimal('0.' + '0' * (decimals - 1) + '1')
@@ -562,6 +569,7 @@ class Url(StringMixin, Raw):
     :param bool absolute: If ``True``, ensures that the generated urls will have the hostname included
     :param str scheme: URL scheme specifier (e.g. ``http``, ``https``)
     '''
+
     def __init__(self, endpoint=None, absolute=False, scheme=None, **kwargs):
         super(Url, self).__init__(**kwargs)
         self.endpoint = endpoint
@@ -601,6 +609,7 @@ class FormattedString(StringMixin, Raw):
 
     :param str src_str: the string to format with the other values from the response.
     '''
+
     def __init__(self, src_str, **kwargs):
         super(FormattedString, self).__init__(**kwargs)
         self.src_str = text_type(src_str)
@@ -619,6 +628,7 @@ class ClassName(String):
 
     :param bool dash: If `True`, transform CamelCase to kebab_case.
     '''
+
     def __init__(self, dash=False, **kwargs):
         super(ClassName, self).__init__(**kwargs)
         self.dash = dash
@@ -649,6 +659,7 @@ class Polymorph(Nested):
 
     :param dict mapping: Maps classes to their model/fields representation
     '''
+
     def __init__(self, mapping, required=False, **kwargs):
         self.mapping = mapping
         parent = self.resolve_ancestor(list(itervalues(mapping)))
@@ -699,3 +710,24 @@ class Polymorph(Nested):
 
         data['mask'] = mask
         return Polymorph(mapping, **data)
+
+
+class Base64(StringMixin, Raw):
+    __schema_format__ = 'base64'
+    __schema_example__ = base64.b64encode(b'string').decode()
+
+    def parse(self, value):
+        if not isinstance(value, bytes):
+            value = super().format(value).encode()
+        try:
+            # Check if value is already base64 encoded
+            base64.b64decode(value)
+        except binascii.Error:
+            # If it is not, encode it
+            return base64.b64encode(value)
+        # Returns the encoded value
+        return value
+
+    def format(self, value):
+        # Returns the value decoded
+        return self.parse(value).decode()

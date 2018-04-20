@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from collections import OrderedDict
 from functools import wraps
 
 from flask import request, current_app, has_app_context
 
+from ._compat import OrderedDict
 from .mask import Mask, apply as apply_mask
 from .utils import unpack
 
 
-def marshal(data, fields, envelope=None, skip_none=False, mask=None):
+def marshal(data, fields, envelope=None, mask=None):
     """Takes raw data (in the form of a dict, list, object) and a dict of
     fields to output and filters the data based on those fields.
 
@@ -19,25 +19,24 @@ def marshal(data, fields, envelope=None, skip_none=False, mask=None):
                    response output
     :param envelope: optional key that will be used to envelop the serialized
                      response
-    :param bool skip_none: optional key will be used to eliminate fields
-                           which value is None or the field's key not
-                           exist in data
 
 
     >>> from flask_restplus import fields, marshal
-    >>> data = { 'a': 100, 'b': 'foo', 'c': None }
-    >>> mfields = { 'a': fields.Raw, 'c': fields.Raw, 'd': fields.Raw }
+    >>> data = { 'a': 100, 'b': 'foo' }
+    >>> mfields = { 'a': fields.Raw }
 
     >>> marshal(data, mfields)
-    OrderedDict([('a', 100), ('c', None), ('d', None)])
-
-    >>> marshal(data, mfields, envelope='data')
-    OrderedDict([('data', OrderedDict([('a', 100), ('c', None), ('d', None)]))])
-
-    >>> marshal(data, mfields, skip_none=True)
     OrderedDict([('a', 100)])
 
+    >>> marshal(data, mfields, envelope='data')
+    OrderedDict([('data', OrderedDict([('a', 100)]))])
+
     """
+
+    # if isinstance(fields, marshmallow.Schema):
+    #     if mask:
+    #         fields = fields(only=(*mask,))
+    #     out = fields.dump(data)
 
     def make(cls):
         if isinstance(cls, type):
@@ -50,17 +49,14 @@ def marshal(data, fields, envelope=None, skip_none=False, mask=None):
         fields = apply_mask(fields, mask, skip=True)
 
     if isinstance(data, (list, tuple)):
-        out = [marshal(d, fields, skip_none=skip_none) for d in data]
+        out = [marshal(d, fields) for d in data]
         if envelope:
             out = OrderedDict([(envelope, out)])
         return out
 
-    items = ((k, marshal(data, v, skip_none=skip_none) if isinstance(v, dict)
-              else make(v).output(k, data))
+    items = ((k, marshal(data, v) if isinstance(v, dict)
+    else make(v).output(k, data))
              for k, v in fields.items())
-
-    if skip_none:
-        items = ((k, v) for k, v in items if v is not None and v != OrderedDict())
 
     out = OrderedDict(items)
 
@@ -91,18 +87,10 @@ class marshal_with(object):
     >>> get()
     OrderedDict([('data', OrderedDict([('a', 100)]))])
 
-    >>> mfields = { 'a': fields.Raw, 'c': fields.Raw, 'd': fields.Raw }
-    >>> @marshal_with(mfields, skip_none=True)
-    ... def get():
-    ...     return { 'a': 100, 'b': 'foo', 'c': None }
-    ...
-    ...
-    >>> get()
-    OrderedDict([('a', 100)])
-
     see :meth:`flask_restplus.marshal`
     """
-    def __init__(self, fields, envelope=None, skip_none=False, mask=None):
+
+    def __init__(self, fields, envelope=None, mask=None):
         """
         :param fields: a dict of whose keys will make up the final
                        serialized response output
@@ -111,7 +99,6 @@ class marshal_with(object):
         """
         self.fields = fields
         self.envelope = envelope
-        self.skip_none = skip_none
         self.mask = Mask(mask, skip=True)
 
     def __call__(self, f):
@@ -124,9 +111,10 @@ class marshal_with(object):
                 mask = request.headers.get(mask_header) or mask
             if isinstance(resp, tuple):
                 data, code, headers = unpack(resp)
-                return marshal(data, self.fields, self.envelope, self.skip_none, mask), code, headers
+                return marshal(data, self.fields, self.envelope, mask), code, headers
             else:
-                return marshal(resp, self.fields, self.envelope, self.skip_none, mask)
+                return marshal(resp, self.fields, self.envelope, mask)
+
         return wrapper
 
 
@@ -144,6 +132,7 @@ class marshal_with_field(object):
 
     see :meth:`flask_restplus.marshal_with`
     """
+
     def __init__(self, field):
         """
         :param field: a single field with which to marshal the output.

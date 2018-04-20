@@ -25,6 +25,7 @@ from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAc
 from werkzeug.wrappers import BaseResponse
 
 from . import apidoc
+from .model import Model
 from .mask import ParseError, MaskError
 from .namespace import Namespace
 from .postman import PostmanCollectionV1
@@ -436,6 +437,24 @@ class Api(object):
             return '{0}.{1}'.format(self.blueprint.name, name)
         else:
             return name
+
+    def register_models_from(self, _module):
+        '''
+        Register all the models inside the given module
+        :param _module: Module
+        '''
+        self.register_models(*vars(_module).values())
+
+    def register_models(self, *models):
+        '''
+        Register the given models
+        :param Model models: Models or list(s) of model(s) to register
+        '''
+        for model in models:
+            if isinstance(model, Model):
+                self.models[model.name] = model
+            elif isinstance(model, list):
+                self.register_models(model)
 
     @property
     def specs_url(self):

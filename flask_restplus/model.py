@@ -11,7 +11,7 @@ from six import iteritems, itervalues
 from .mask import Mask
 from .errors import abort
 
-from jsonschema import Draft4Validator
+from .format import ExtendedDraft4Validator
 from jsonschema.exceptions import ValidationError
 
 from .utils import not_none
@@ -94,7 +94,7 @@ class ModelBase(object):
         return model
 
     def validate(self, data, resolver=None, format_checker=None):
-        validator = Draft4Validator(self.__schema__, resolver=resolver, format_checker=format_checker)
+        validator = ExtendedDraft4Validator(self.__schema__, resolver=resolver, format_checker=format_checker)
         try:
             validator.validate(data)
         except ValidationError:
@@ -130,8 +130,8 @@ class Model(ModelBase, OrderedDict, MutableMapping):
             self.__mask__ = Mask(self.__mask__)
         super(Model, self).__init__(name, *args, **kwargs)
 
-        def instance_clone(name, *parents):
-            return self.__class__.clone(name, self, *parents)
+        def instance_clone(name, *parents, partial=None, required=None, optional=None):
+            return self.__class__.clone(name, self, *parents, partial=partial, required=required, optional=optional)
         self.clone = instance_clone
 
     @property
@@ -194,7 +194,7 @@ class Model(ModelBase, OrderedDict, MutableMapping):
             return self.clone(name, fields)
 
     @classmethod
-    def clone(cls, name, *parents):
+    def clone(cls, name, *parents, partial:tuple=None, required=None, optional=None):
         '''
         Clone these models (Duplicate all fields)
 
@@ -208,10 +208,32 @@ class Model(ModelBase, OrderedDict, MutableMapping):
 
         :param str name: The new model name
         :param dict parents: The new model extra fields
+        :param tuple partial: Tuple of fields to keep in the returned model
+        :param tuple or bool required: Tuple of fields to set as required in the returned model oe True to set them all
+        :param tuple or bool optional: Tuple of fields to set as optional in the returned model oe True to set them all
         '''
         fields = OrderedDict()
         for parent in parents:
             fields.update(copy.deepcopy(parent))
+
+        def _wrap(data):
+            if not isinstance(data, (list, tuple)):
+                data = (data,)
+            return data
+
+        if partial is not None:
+            fields = {k: v for (k, v) in fields.items() if k in partial}
+
+        if optional is not None:
+            optional = fields if optional is True else _wrap(optional)
+            for field in optional:
+                fields[field].required = False
+
+        if required is not None:
+            required = fields if required is True else _wrap(required)
+            for field in required:
+                fields[field].required = True
+
         return cls(name, fields)
 
     def __deepcopy__(self, memo):

@@ -80,9 +80,16 @@ class Resource(MethodView):
             validate = validate if validate is not None else self.api._validate
             if validate:
                 for expect in doc.get('expect', []):
-                    # TODO: handle third party handlers
                     if isinstance(expect, list) and len(expect) == 1:
                         if isinstance(expect[0], ModelBase):
                             self.__validate_payload(expect[0], collection=True)
                     if isinstance(expect, ModelBase):
                         self.__validate_payload(expect, collection=False)
+
+            # TODO do not remove
+            # Handle expected arguments with webargs and marshmallow
+            # for expect in doc.get('expect_args', [])[::-1]:
+            #     # Wrap function using webargs decorator for each provided arg in reverse order
+            #     # to ensure that args will be parsed in the order they was provided first
+            #     func = use_args(expect.pop('arg'), **expect)(func)
+            #     # TODO handle error to raise correct one

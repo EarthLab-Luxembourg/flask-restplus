@@ -165,17 +165,19 @@ class Namespace(object):
             model = Model.extend(name, parent, fields)
         return self.add_model(name, model)
 
-    def clone(self, name, *specs):
+    def clone(self, name, *specs, partial=None, required=None, optional=None):
         '''
         Clone a model (Duplicate all fields)
 
         :param str name: the resulting model name
         :param specs: a list of models from which to clone the fields
-
+        :param tuple partial: Tuple of fields to keep in the returned model
+        :param tuple or bool required: Tuple of fields to set as required in the returned model oe True to set them all
+        :param tuple or bool optional: Tuple of fields to set as optional in the returned model oe True to set them all
         .. seealso:: :meth:`Model.clone`
 
         '''
-        model = Model.clone(name, *specs)
+        model = Model.clone(name, *specs, partial=partial, required=required, optional=optional)
         return self.add_model(name, model)
 
     def inherit(self, name, *specs):
