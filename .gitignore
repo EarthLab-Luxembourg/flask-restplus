@@ -63,3 +63,4 @@ doc/_build/
 flask_restplus/static
 node_modules
 .idea
+test.py
