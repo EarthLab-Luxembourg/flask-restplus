@@ -6,8 +6,9 @@ import re
 from collections import OrderedDict, Hashable
 from inspect import getdoc
 
+from apispec.ext.marshmallow import MarshmallowPlugin
 from apispec import APISpec
-from apispec.ext.marshmallow import swagger
+from apispec.ext.marshmallow import openapi
 from flask import current_app
 from marshmallow import Schema
 from marshmallow.utils import is_instance_or_subclass
@@ -127,6 +128,7 @@ class Swagger(object):
     def __init__(self, api):
         self.spec = None
         self.api = api
+        self.openapi = openapi.OpenAPIConverter('2.0')
 
     def as_dict(self):
         '''
@@ -168,13 +170,14 @@ class Swagger(object):
             version=_v(self.api.version),
             info=infos,
             basepath=basepath,
+            openapi_version='2.0',
             produces=list(iterkeys(self.api.representations)),
             consumes=['application/json'],
             securityDefinitions=self.api.authorizations or None,
             security=self.security_requirements(self.api.security) or None,
             host=self.get_host(),
             responses=self.register_errors(),
-            plugins=('apispec.ext.marshmallow',)
+            plugins=(MarshmallowPlugin(),)
         )
 
         # Extract API tags
@@ -182,8 +185,8 @@ class Swagger(object):
             self.spec.add_tag(tag)
 
         # Extract API definitions
-        for name, model in self.api.schemas.items():
-            self.spec.definition(name, schema=model)
+        for name, schema in self.api.schemas.items():
+            self.spec.definition(name, schema=schema)
 
         # Extract API paths
         for ns in self.api.namespaces:
@@ -264,9 +267,9 @@ class Swagger(object):
             if is_instance_or_subclass(schema, Schema):
                 if not self.api.has_schema(schema):
                     raise ValueError('Schema {0} not registered'.format(schema))
-                converter = swagger.schema2parameters
+                converter = self.openapi.schema2parameters
             else:
-                converter = swagger.fields2parameters
+                converter = self.openapi.fields2parameters
 
             options = {'spec': self.spec}
             locations = options.pop('locations', None)

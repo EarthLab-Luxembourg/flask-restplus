@@ -138,13 +138,15 @@ class Namespace(object):
         '''
         abort(*args, **kwargs)
 
-    def register_schema(self, name, schema: ma.Schema = None) -> ma.Schema:
+    def register_schema(self, schema: ma.Schema, name=None) -> ma.Schema:
         '''
-        Register the given Schema for this namespace
-        :param name: Name of the schema
-        :param ma.Schema schema: Schema
+        Register the given Schema for this namespace.
+        If 'name' is not provided, the schema name will be used instead
+        :param ma.Schema schema: Schema to register
+        :param name: Name of the schema (optional)
         :return ma.Schema: The given schema
         '''
+        name = name or schema.__name__
         self.schemas[name] = schema
         for api in self.apis:
             api.schemas[name] = schema
