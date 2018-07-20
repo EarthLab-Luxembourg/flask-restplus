@@ -5,6 +5,9 @@ import inspect
 
 import marshmallow as ma
 import six
+import warnings
+
+from flask import request
 from flask.views import http_method_funcs
 
 from ._http import HTTPStatus
@@ -24,10 +27,12 @@ class Namespace(object):
     :param str path: An optional prefix path. If not provided, prefix is ``/+name``
     :param list decorators: A list of decorators to apply to each resources
     :param bool validate: Whether or not to perform validation on this namespace
+    :param bool ordered: Whether or not to preserve order on models and marshalling
     :param Api api: an optional API to attache to the namespace
     '''
 
-    def __init__(self, name, description=None, path=None, decorators=None, validate=None, **kwargs):
+    def __init__(self, name, description=None, path=None, decorators=None, validate=None,
+            authorizations=None, ordered=False, **kwargs):
         self.name = name
         self.description = description
         self._path = path
@@ -40,6 +45,8 @@ class Namespace(object):
         self.resources = []
         self.error_handlers = {}
         self.default_error_handler = None
+        self.authorizations = authorizations
+        self.ordered = ordered
         self.apis = []
         if 'api' in kwargs:
             self.apis.append(kwargs['api'])
@@ -79,14 +86,12 @@ class Namespace(object):
         '''
         A decorator to route resources.
         '''
-
         def wrapper(cls):
             doc = kwargs.pop('doc', None)
             if doc is not None:
                 self._handle_api_doc(cls, doc)
             self.add_resource(cls, *urls, **kwargs)
             return cls
-
         return wrapper
 
     def _handle_api_doc(self, cls, doc):
@@ -95,12 +100,13 @@ class Namespace(object):
             return
         current_doc = getattr(cls, '__apidoc__', {})
         unshortcut_params_description(doc)
+        handle_deprecations(doc)
         for http_method in http_method_funcs:
             if http_method in doc:
-
                 if doc[http_method] is False:
                     continue
                 unshortcut_params_description(doc[http_method])
+                handle_deprecations(doc[http_method])
         # Ensure expect is always a list
         if 'expect' in doc and not isinstance(doc['expect'], list):
             doc['expect'] = [doc['expect']]
@@ -118,7 +124,6 @@ class Namespace(object):
         def wrapper(documented):
             self._handle_api_doc(documented, kwargs if show else False)
             return documented
-
         return wrapper
 
     def hide(self, func):
@@ -191,7 +196,6 @@ class Namespace(object):
         :param int code: Optionally give the expected HTTP response code if its different from 200
 
         '''
-
         def wrapper(func):
             doc = {
                 'responses': {
@@ -200,8 +204,7 @@ class Namespace(object):
                 # '__mask__': kwargs.get('mask', True),  # Mask values can't be determined outside app context
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
-            return marshal_with(argmap, **kwargs)(func)
-
+            return marshal_with(argmap, ordered=self.ordered, **kwargs)(func)
         return wrapper
 
     def marshal(self, *args, **kwargs):
@@ -215,7 +218,6 @@ class Namespace(object):
             def wrapper(func):
                 self.error_handlers[exception] = func
                 return func
-
             return wrapper
         else:
             # Register the default error handler
@@ -279,6 +281,11 @@ class Namespace(object):
             kwargs.update(arg)
         return self.doc(vendor=kwargs)
 
+    @property
+    def payload(self):
+        '''Store the input payload in the current request context'''
+        return request.get_json()
+
 
 def unshortcut_params_description(data):
     if 'params' in data:
@@ -286,3 +293,11 @@ def unshortcut_params_description(data):
             if isinstance(description, six.string_types):
                 data['params'][name] = {'description': description}
 
+
+def handle_deprecations(doc):
+    if 'parser' in doc:
+        warnings.warn('The parser attribute is deprecated, use expect instead', DeprecationWarning, stacklevel=2)
+        doc['expect'] = doc.get('expect', []) + [doc.pop('parser')]
+    if 'body' in doc:
+        warnings.warn('The body attribute is deprecated, use expect instead', DeprecationWarning, stacklevel=2)
+        doc['expect'] = doc.get('expect', []) + [doc.pop('body')]

@@ -124,7 +124,6 @@ class Swagger(object):
     '''
     A Swagger documentation wrapper for an API instance.
     '''
-
     def __init__(self, api):
         self.spec = None
         self.api = api
@@ -157,6 +156,13 @@ class Swagger(object):
         if len(basepath) > 1 and basepath.endswith('/'):
             basepath = basepath[:-1]
 
+        # merge in the top-level authorizations
+        for ns in self.api.namespaces:
+            if ns.authorizations:
+                if self.api.authorizations is None:
+                    self.api.authorizations = {}
+                self.api.authorizations = merge(self.api.authorizations, ns.authorizations)
+
         self.spec = APISpec(
             title=_v(self.api.title),
             version=_v(self.api.version),
@@ -186,6 +192,7 @@ class Swagger(object):
                     self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
 
         return self.spec.to_dict()
+
 
     def get_host(self):
         hostname = current_app.config.get('SERVER_NAME', None) or None
@@ -272,7 +279,7 @@ class Swagger(object):
 
     def register_errors(self):
         responses = {}
-        for exception, handler in self.api.error_handlers.items():
+        for exception, handler in iteritems(self.api.error_handlers):
             doc = parse_docstring(handler)
             response = {
                 'description': doc['summary']
@@ -307,7 +314,6 @@ class Swagger(object):
             'parameters': self.parameters_for(doc[method]) or None,
             'security': self.security_for(doc, method),
         }
-
         # Handle 'produces' mimetypes documentation
         if 'produces' in doc[method]:
             operation['produces'] = doc[method]['produces']
@@ -331,7 +337,7 @@ class Swagger(object):
         '''
         return dict(
             (k if k.startswith('x-') else 'x-{0}'.format(k), v)
-            for k, v in doc[method].get('vendor', {}).items()
+            for k, v in iteritems(doc[method].get('vendor', {}))
         )
 
     def description_for(self, doc, method):
@@ -371,20 +377,6 @@ class Swagger(object):
 
             params.append(param)
 
-        # Handle fields mask
-        # mask = doc.get('__mask__')
-        # if (mask and current_app.config['RESTPLUS_MASK_SWAGGER']):
-        #     param = {
-        #         'name': current_app.config['RESTPLUS_MASK_HEADER'],
-        #         'in': 'header',
-        #         'type': 'string',
-        #         'format': 'mask',
-        #         'description': 'An optional fields mask',
-        #     }
-        #     if isinstance(mask, string_types):
-        #         param['default'] = mask
-        #     params.append(param)
-
         return params
 
     def responses_for(self, doc, method):
@@ -420,8 +412,8 @@ class Swagger(object):
                 responses[code]['schema'] = d['model']
 
             if 'docstring' in d:
-                for name, description in d['docstring']['raises'].items():
-                    for exception, handler in self.api.error_handlers.items():
+                for name, description in iteritems(d['docstring']['raises']):
+                    for exception, handler in iteritems(self.api.error_handlers):
                         error_responses = getattr(handler, '__apidoc__', {}).get('responses', {})
                         code = list(error_responses.keys())[0] if error_responses else None
                         if code and exception.__name__ == name:
@@ -438,9 +430,9 @@ class Swagger(object):
             response['headers'] = dict(
                 (k, _clean_header(v)) for k, v
                 in itertools.chain(
-                    doc.get('headers', {}).items(),
-                    method_doc.get('headers', {}).items(),
-                    (headers or {}).items()
+                    iteritems(doc.get('headers', {})),
+                    iteritems(method_doc.get('headers', {})),
+                    iteritems(headers or {})
                 )
             )
         return response
@@ -467,7 +459,7 @@ class Swagger(object):
             return []
 
     def security_requirement(self, value):
-        if isinstance(value, string_types):
+        if isinstance(value, (string_types)):
             return {value: []}
         elif isinstance(value, dict):
             return dict(
