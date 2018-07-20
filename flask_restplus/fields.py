@@ -140,7 +140,7 @@ class Raw(object):
         '''
         return value
 
-    def output(self, key, obj):
+    def output(self, key, obj, **kwargs):
         '''
         Pulls the value for the given key from the object, applies the
         field's formatting and returns the result. If the key is not found
@@ -214,7 +214,7 @@ class Nested(Raw):
     def nested(self):
         return getattr(self.model, 'resolved', self.model)
 
-    def output(self, key, obj):
+    def output(self, key, obj, ordered=False, **kwargs):
         value = get_value(key if self.attribute is None else self.attribute, obj)
         if value is None:
             if self.allow_null:
@@ -222,7 +222,7 @@ class Nested(Raw):
             elif self.default is not None:
                 return self.default
 
-        return marshal(value, self.nested, skip_none=self.skip_none)
+        return marshal(value, self.nested, skip_none=self.skip_none, ordered=ordered)
 
     def schema(self):
         schema = super(Nested, self).schema()
@@ -286,7 +286,7 @@ class List(Raw):
             for idx, val in enumerate(value)
         ]
 
-    def output(self, key, data):
+    def output(self, key, data, ordered=False, **kwargs):
         value = get_value(key if self.attribute is None else self.attribute, data)
         # we cannot really test for external dict behavior
         if is_indexable_but_not_string(value) and not isinstance(value, dict):
@@ -576,7 +576,7 @@ class Url(StringMixin, Raw):
         self.absolute = absolute
         self.scheme = scheme
 
-    def output(self, key, obj):
+    def output(self, key, obj, **kwargs):
         try:
             data = to_marshallable_type(obj)
             endpoint = self.endpoint if self.endpoint is not None else request.endpoint
@@ -614,7 +614,7 @@ class FormattedString(StringMixin, Raw):
         super(FormattedString, self).__init__(**kwargs)
         self.src_str = text_type(src_str)
 
-    def output(self, key, obj):
+    def output(self, key, obj, **kwargs):
         try:
             data = to_marshallable_type(obj)
             return self.src_str.format(**data)
@@ -633,7 +633,7 @@ class ClassName(String):
         super(ClassName, self).__init__(**kwargs)
         self.dash = dash
 
-    def output(self, key, obj):
+    def output(self, key, obj, **kwargs):
         classname = obj.__class__.__name__
         if classname == 'dict':
             return 'object'
@@ -665,7 +665,7 @@ class Polymorph(Nested):
         parent = self.resolve_ancestor(list(itervalues(mapping)))
         super(Polymorph, self).__init__(parent, allow_null=not required, **kwargs)
 
-    def output(self, key, obj):
+    def output(self, key, obj, ordered=False, **kwargs):
         # Copied from upstream NestedField
         value = get_value(key if self.attribute is None else self.attribute, obj)
         if value is None:
@@ -685,7 +685,7 @@ class Polymorph(Nested):
         elif len(candidates) > 1:
             raise ValueError('Unable to determine a candidate for: ' + value.__class__.__name__)
         else:
-            return marshal(value, candidates[0].resolved, mask=self.mask)
+            return marshal(value, candidates[0].resolved, mask=self.mask, ordered=ordered)
 
     def resolve_ancestor(self, models):
         '''
