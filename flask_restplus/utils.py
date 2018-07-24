@@ -2,19 +2,20 @@
 from __future__ import unicode_literals
 
 import re
-
 from collections import OrderedDict
 from copy import deepcopy
+
 from six import iteritems
 
+import marshmallow as ma
+from webargs import argmap2schema
 from ._http import HTTPStatus
-
 
 FIRST_CAP_RE = re.compile('(.)([A-Z][a-z]+)')
 ALL_CAP_RE = re.compile('([a-z0-9])([A-Z])')
 
 
-__all__ = ('merge', 'camel_to_dash', 'default_id', 'not_none', 'not_none_sorted', 'unpack')
+__all__ = ('merge', 'camel_to_dash', 'default_id', 'not_none', 'not_none_sorted', 'unpack', 'get_schema')
 
 
 def merge(first, second):
@@ -115,3 +116,20 @@ def unpack(response, default_code=HTTPStatus.OK):
         return data, code or default_code, headers
     else:
         raise ValueError('Too many response values')
+
+
+def get_schema(argmap, req=None):
+    """
+    Get a marshmallow schema instance based on the given argmap.
+
+    :return: Marshmallow schema instance
+    """
+    if isinstance(argmap, ma.Schema):
+        schema = argmap
+    elif isinstance(argmap, type) and issubclass(argmap, ma.Schema):
+        schema = argmap()
+    elif callable(argmap):
+        schema = argmap(req)
+    else:
+        schema = argmap2schema(argmap)()
+    return schema

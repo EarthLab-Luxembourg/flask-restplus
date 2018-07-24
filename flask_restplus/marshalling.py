@@ -1,29 +1,22 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from collections import OrderedDict
+import logging
+import marshmallow as ma
+
 from functools import wraps
-from six import iteritems
 
-from flask import request, current_app, has_app_context
+from .utils import get_schema, unpack
 
-from .utils import unpack
+log = logging.getLogger(__name__)
 
 
-def marshal(data, fields, envelope=None, skip_none=False, ordered=False):
+def marshal(data, fields):
     """Takes raw data (in the form of a dict, list, object) and a dict of
     fields or a Schema to output and filters the data based on those fields/Schema.
 
     :param data: the actual object(s) from which the fields are taken from
-    :param fields: a dict of whose keys will make up the final serialized
-                   response output or a Schema
-    :param envelope: optional key that will be used to envelop the serialized
-                     response
-    :param bool skip_none: optional key will be used to eliminate fields
-                           which value is None or the field's key not
-                           exist in data
-    :param bool ordered: Wether or not to preserve order
-
+    :param fields: Marshmallow Schema or dict of marshmallow fields
 
     >>> from flask_restplus import fields, marshal
     >>> data = { 'a': 100, 'b': 'foo', 'c': None }
@@ -39,18 +32,13 @@ def marshal(data, fields, envelope=None, skip_none=False, ordered=False):
     OrderedDict([('a', 100)])
 
     """
+    schema = get_schema(fields)
+    out, errors = schema.dump(data)
 
-    schema = fields
-    out = schema.dump(data)
-
-    if skip_none:
-        items = ((k, v) for k, v in out.items
-                 if v is not None and v != OrderedDict() and v != {})
-
-    out = OrderedDict(items) if ordered else dict(items)
-
-    if envelope:
-        out = OrderedDict([(envelope, out)]) if ordered else {envelope: out}
+    # Not sure about what to do with errors, so we just log them
+    if errors and len(errors) > 0:
+        # Maybe we should raise an error ?
+        log.error('Marshalling errors %s', ma.pprint(errors))
 
     return out
 
@@ -78,7 +66,7 @@ class marshal_with(object):
     OrderedDict([('data', OrderedDict([('a', 100)]))])
 
     >>> mfields = { 'a': fields.Str(), 'c': fields.Str(), 'd': fields.Str() }
-    >>> @marshal_with(mfields, skip_none=True)
+    >>> @marshal_with(mfields)
     ... def get():
     ...     return { 'a': 100, 'b': 'foo', 'c': None }
     ...
@@ -88,17 +76,13 @@ class marshal_with(object):
 
     see :meth:`flask_restplus.marshal`
     """
-    def __init__(self, fields, envelope=None, skip_none=False, ordered=False):
+
+    def __init__(self, fields):
         """
         :param fields: a dict of whose keys will make up the final
                        serialized response output or a Schema
-        :param envelope: optional key that will be used to envelop the serialized
-                         response
         """
         self.fields = fields
-        self.envelope = envelope
-        self.skip_none = skip_none
-        self.ordered = ordered
 
     def __call__(self, f):
         @wraps(f)
@@ -107,12 +91,13 @@ class marshal_with(object):
             if isinstance(resp, tuple):
                 data, code, headers = unpack(resp)
                 return (
-                    marshal(data, self.fields, self.envelope, self.skip_none, self.ordered),
+                    marshal(data, self.fields),
                     code,
                     headers
                 )
             else:
-                return marshal(resp, self.fields, self.envelope, self.skip_none, self.ordered)
+                return marshal(resp, self.fields)
+
         return wrapper
 
 

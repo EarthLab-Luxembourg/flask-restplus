@@ -6,17 +6,17 @@ import re
 from collections import OrderedDict, Hashable
 from inspect import getdoc
 
-from apispec.ext.marshmallow import MarshmallowPlugin
-from apispec import APISpec
-from apispec.ext.marshmallow import openapi
 from flask import current_app
-from marshmallow import Schema
-from marshmallow.utils import is_instance_or_subclass
-from six import string_types, iteritems, iterkeys
+
+from six import iteritems, iterkeys, string_types
+
 from werkzeug.routing import parse_rule
 
+from apispec import APISpec
+from apispec.ext.marshmallow import MarshmallowPlugin
+
 from ._http import HTTPStatus
-from .utils import merge, not_none
+from .utils import get_schema, merge, not_none
 
 #: Maps Flask/Werkzeug rooting types to Swagger ones
 PATH_TYPES = {
@@ -41,6 +41,8 @@ DEFAULT_RESPONSE_DESCRIPTION = 'Success'
 DEFAULT_RESPONSE = {'description': DEFAULT_RESPONSE_DESCRIPTION}
 
 RE_RAISES = re.compile(r'^:raises\s+(?P<name>[\w\d_]+)\s*:\s*(?P<description>.*)$', re.MULTILINE)
+
+OPENAPI_VERSION = '2.0'
 
 
 def _v(value):
@@ -128,7 +130,6 @@ class Swagger(object):
     def __init__(self, api):
         self.spec = None
         self.api = api
-        self.openapi = openapi.OpenAPIConverter('2.0')
 
     def as_dict(self):
         '''
@@ -165,20 +166,27 @@ class Swagger(object):
                     self.api.authorizations = {}
                 self.api.authorizations = merge(self.api.authorizations, ns.authorizations)
 
+        plugin = MarshmallowPlugin()
+
         self.spec = APISpec(
             title=_v(self.api.title),
             version=_v(self.api.version),
             info=infos,
             basepath=basepath,
-            openapi_version='2.0',
+            openapi_version=OPENAPI_VERSION,
             produces=list(iterkeys(self.api.representations)),
             consumes=['application/json'],
             securityDefinitions=self.api.authorizations or None,
             security=self.security_requirements(self.api.security) or None,
             host=self.get_host(),
             responses=self.register_errors(),
-            plugins=(MarshmallowPlugin(),)
+            plugins=(plugin,)
         )
+
+        # Inject custom fields mapping of the API to the Marshmallow plugin
+        # Must do thids AFTER spec initialization because before that, the plugin have no spec defined
+        for field_type, args in self.api.custom_fields_mapping.items():
+            plugin.map_to_openapi_type(*args)(field_type)
 
         # Extract API tags
         for tag in self.extract_tags(self.api):
@@ -232,7 +240,7 @@ class Swagger(object):
         if doc is False:
             return False
         doc['name'] = resource.__name__
-        expect = self.expected_params(doc)
+        expect = doc.get('expect', [])
         params = doc.get('params', OrderedDict())
         params = merge(params, extract_path_params(url))
         doc['params'] = params
@@ -249,36 +257,9 @@ class Swagger(object):
                 method_params = method_doc.get('params', {})
                 inherited_params = OrderedDict((k, v) for k, v in iteritems(params) if k in params)
                 method_doc['params'] = merge(inherited_params, method_params)
-                method_doc['expect'] = expect + self.expected_params(method_doc)
+                method_doc['expect'] = expect + method_doc.get('expect', [])
             doc[method] = method_doc
         return doc
-
-    def expected_params(self, doc):
-        '''Parse and returns the expected params from the given doc'''
-        params = []
-        if 'expect' not in doc:
-            return params
-
-        for expect in doc['expect']:
-            schema = expect.get('argmap', {})
-            if not is_instance_or_subclass(schema, Schema) and callable(schema):
-                schema = schema(request=None)
-
-            if is_instance_or_subclass(schema, Schema):
-                if not self.api.has_schema(schema):
-                    raise ValueError('Schema {0} not registered'.format(schema))
-                converter = self.openapi.schema2parameters
-            else:
-                converter = self.openapi.fields2parameters
-
-            options = {'spec': self.spec}
-            locations = options.pop('locations', None)
-            if locations:
-                options['default_in'] = locations[0]
-
-            params.extend(converter(schema, **options))
-
-        return params
 
     def register_errors(self):
         responses = {}
@@ -360,7 +341,13 @@ class Swagger(object):
         return doc[method]['id'] if 'id' in doc[method] else self.api.default_id(doc['name'], method)
 
     def parameters_for(self, doc):
-        params = doc.get('expect', [])
+        params = []
+        for expected in doc.get('expect', []):
+            if 'argmap' in expected:
+                expected['schema'] = get_schema(expected.pop('argmap'))
+            if 'in' not in expected:
+                expected['in'] = 'body'
+            params.append(expected)
         for name, param in iteritems(doc['params']):
             param['name'] = name
             if 'type' not in param and 'schema' not in param:
@@ -391,7 +378,7 @@ class Swagger(object):
                 for code, response in iteritems(d['responses']):
                     if isinstance(response, string_types):
                         description = response
-                        model = None
+                        schema = None
                         kwargs = {}
                     elif len(response) == 3:
                         description, schema, kwargs = response

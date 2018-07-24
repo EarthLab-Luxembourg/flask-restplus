@@ -3,12 +3,14 @@ from __future__ import unicode_literals
 
 import inspect
 
-import marshmallow as ma
 import six
 import warnings
+import marshmallow as ma
 
 from flask import request
 from flask.views import http_method_funcs
+
+from webargs.flaskparser import FlaskParser, abort as wa_abort
 
 from ._http import HTTPStatus
 from .errors import abort
@@ -48,6 +50,8 @@ class Namespace(object):
         self.authorizations = authorizations
         self.ordered = ordered
         self.apis = []
+        self.parser = FlaskParser(error_handler=self.handle_validation_error)
+        self.custom_fields_mapping = {}
         if 'api' in kwargs:
             self.apis.append(kwargs['api'])
 
@@ -138,15 +142,21 @@ class Namespace(object):
         '''
         abort(*args, **kwargs)
 
-    def register_schema(self, schema: ma.Schema, name=None) -> ma.Schema:
+    def register_schema(self, schema, name=None) -> ma.Schema:
         '''
         Register the given Schema for this namespace.
-        If 'name' is not provided, the schema name will be used instead
-        :param ma.Schema schema: Schema to register
+        If 'name' is not provided, the schema name will be used instead.
+
+        :param schema: Marshmallow schema to register (Either a schema class or an instance)
         :param name: Name of the schema (optional)
         :return ma.Schema: The given schema
         '''
-        name = name or schema.__name__
+        if not name:
+            if isinstance(schema, ma.Schema):
+                schema_class = type(schema)
+            else:
+                schema_class = schema
+            name = schema_class.__name__
         self.schemas[name] = schema
         for api in self.apis:
             api.schemas[name] = schema
@@ -155,9 +165,6 @@ class Namespace(object):
     def expect_kwargs(self, *args, **kwargs):
         '''
         A decorator to specify expected inputs.
-
-        Once decorated function will be called, parsed arguments will be
-        injected into the view func or method as keyword arguments
 
         This is a shortcut to :meth:`expect_args` with ``as_kwargs=True``.
         '''
@@ -168,7 +175,10 @@ class Namespace(object):
         '''
         A decorator to specify expected inputs.
 
-        Once decorated function is called, parsed arguments will be inject into the view function or method.
+        This decorator is a wrapper for webargs.flaskparser.use_args which, does the same job and extract expected
+        parameters to be well documented in the Swagger.
+
+        See also: https://webargs.readthedocs.io/en/latest/api.html?highlight=use_args#webargs.core.Parser.use_args
 
         :param argmap: Either a `marshmallow.Schema`, a `dict`
             of argname -> `marshmallow.fields.Field` pairs, or a callable
@@ -177,24 +187,30 @@ class Namespace(object):
         :param bool as_kwargs: Whether to insert arguments as keyword arguments.
         :param callable validate: Validation function that receives the dictionary
             of parsed arguments. If the function returns ``False``, the parser
-            will raise a :exc:`ValidationError`.
+            will raise a :exc:`ValidationError`. Please note that you can also set custom validation directly on yout
+            Marshmallow schema/fields
         '''
-        return self.doc(expect={
-            'argmap': argmap,
-            'locations': locations,
-            'as_kwargs': as_kwargs,
-            'validate': validate
-        })
+        def inner(*args, **kwargs):
+            expect = {'argmap': argmap}
+            if locations:
+                expect['in'] = locations[0]
+            # Get the method for swagger documenting (only set schema and 'in' properties
+            meth = self.doc(expect=expect)(*args, **kwargs)
+            # Return this method, decorated with use_args for parsinf
+            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(meth)
+
+        return inner
 
     def as_list(self, field):
         '''Allow to specify nested lists for documentation'''
         field.__apidoc__ = merge(getattr(field, '__apidoc__', {}), {'as_list': True})
         return field
 
-    def marshal_with(self, argmap, code=HTTPStatus.OK, description=None, **kwargs):
+    def marshal_with(self, argmap, code=HTTPStatus.OK, description=None):
         '''
-        A decorator specifying the fields to use for serialization.
+        A decorator specifying the schema/fields to use for serialization.
 
+        :param argmap: Marshmallow schema or dict of Marshmallow fields
         :param int code: Optionally give the expected HTTP response code if its different from 200
 
         '''
@@ -202,11 +218,10 @@ class Namespace(object):
             doc = {
                 'responses': {
                     code: (description, argmap)
-                },
-                # '__mask__': kwargs.get('mask', True),  # Mask values can't be determined outside app context
+                }
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
-            return marshal_with(argmap, ordered=self.ordered, **kwargs)(func)
+            return marshal_with(argmap)(func)
         return wrapper
 
     def marshal(self, *args, **kwargs):
@@ -287,6 +302,31 @@ class Namespace(object):
     def payload(self):
         '''Store the input payload in the current request context'''
         return request.get_json()
+
+    def map_to_openapi_type(self, *args):
+        """
+        Decorator to set mapping for custom marshmallow fields.
+        *args can be:
+        a pair of the form (type, format)
+        a core marshmallow field type (in which case we reuse that type’s mapping)
+
+        :param args:
+        :return:
+        """
+        def inner(field_type):
+            self.custom_fields_mapping[field_type] = args
+            return field_type
+        return inner
+
+    def handle_validation_error(self, err, req, schema):
+        """
+        Handle webargs request validation errors
+        :param err: The error
+        :param req: The request
+        :param schema: The marshmallow schema which validation failed
+        """
+        wa_abort(400, message='Input payload validation failed',
+                 errors=err.messages)
 
 
 def unshortcut_params_description(data):

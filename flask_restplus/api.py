@@ -6,12 +6,15 @@ import inspect
 import logging
 import operator
 import re
+
 import six
 import sys
+import marshmallow as ma
 
 from collections import OrderedDict
 from functools import wraps, partial
 from types import MethodType
+from typing import Type
 
 from flask import url_for, request, current_app
 from flask import make_response as original_flask_make_response
@@ -141,6 +144,7 @@ class Api(object):
         self.resources = []
         self.app = None
         self.blueprint = None
+        self.custom_fields_mapping = {}
 
         if app is not None:
             self.app = app
@@ -193,7 +197,7 @@ class Api(object):
         self._register_doc(self.blueprint or app)
 
         app.handle_exception = partial(self.error_router, app.handle_exception)
-        app.handle_user_exception = partial(self.error_router, app.handle_user_exception)
+        app.handle_user_exception = partial(self.user_error_router, app.handle_user_exception)
 
         if len(self.resources) > 0:
             for resource, urls, kwargs in self.resources:
@@ -419,6 +423,22 @@ class Api(object):
         # Register error handlers
         for exception, handler in ns.error_handlers.items():
             self.error_handlers[exception] = handler
+        # Register custom fields mapping
+        for field_type, args in ns.custom_fields_mapping.items():
+            self.custom_fields_mapping[field_type] = args
+
+    def register_schema(self, schema: Type[ma.Schema], name=None) -> ma.Schema:
+        '''
+        Register the given Schema for this api.
+        If 'name' is not provided, the schema name will be used instead.
+
+        :param schema: Marshmallow schema to register
+        :param name: Name of the schema (optional)
+        :return ma.Schema: The given schema
+        '''
+        name = name or schema.__name__
+        self.schemas[name] = schema
+        return schema
 
     def namespace(self, *args, **kwargs):
         '''
@@ -844,13 +864,28 @@ class Api(object):
             endpoint = '{0}.{1}'.format(self.blueprint.name, endpoint)
         return url_for(endpoint, **values)
 
-    def has_schema(self, schema):
+    def has_schema(self, schema: Type[ma.Schema]):
         '''
         Returns True if the given schema has been registered to this API
         :param schema: Marshmallow schema
         :return: True if the given schema has been registered to this API, false otherwise
         '''
         return schema in list(self.schemas.values())
+
+    def map_to_openapi_type(self, *args):
+        """
+        Decorator to set mapping for custom fields.
+        *args can be:
+        a pair of the form (type, format)
+        a core marshmallow field type (in which case we reuse that type’s mapping)
+
+        :param args:
+        :return:
+        """
+        def inner(field_type):
+            self.custom_fields_mapping[field_type] = args
+            return field_type
+        return inner
 
 
 class SwaggerView(Resource):
