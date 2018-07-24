@@ -127,6 +127,7 @@ class Swagger(object):
     '''
     A Swagger documentation wrapper for an API instance.
     '''
+
     def __init__(self, api):
         self.spec = None
         self.api = api
@@ -171,16 +172,18 @@ class Swagger(object):
         self.spec = APISpec(
             title=_v(self.api.title),
             version=_v(self.api.version),
+            plugins=(plugin,),
             info=infos,
-            basepath=basepath,
             openapi_version=OPENAPI_VERSION,
-            produces=list(iterkeys(self.api.representations)),
-            consumes=['application/json'],
-            securityDefinitions=self.api.authorizations or None,
-            security=self.security_requirements(self.api.security) or None,
-            host=self.get_host(),
-            responses=self.register_errors(),
-            plugins=(plugin,)
+            **{
+                'basePath': basepath,
+                'produces': list(iterkeys(self.api.representations)),
+                'consumes': ['application/json'],
+                'securityDefinitions': self.api.authorizations or None,
+                'security': self.security_requirements(self.api.security) or None,
+                'host': self.get_host(),
+                'responses': self.register_errors(),
+            }
         )
 
         # Inject custom fields mapping of the API to the Marshmallow plugin
