@@ -190,16 +190,14 @@ class Namespace(object):
             will raise a :exc:`ValidationError`. Please note that you can also set custom validation directly on yout
             Marshmallow schema/fields
         '''
-        def inner(*args, **kwargs):
+        def wrapper(func):
             expect = {'argmap': argmap}
             if locations:
                 expect['in'] = locations[0]
             # Get the method for swagger documenting (only set schema and 'in' properties
-            meth = self.doc(expect=expect)(*args, **kwargs)
-            # Return this method, decorated with use_args for parsinf
-            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(meth)
-
-        return inner
+            func = self.doc(expect=expect)(func)
+            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(func)
+        return wrapper
 
     def as_list(self, field):
         '''Allow to specify nested lists for documentation'''

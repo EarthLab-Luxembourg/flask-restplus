@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 from flask import request
 from flask.views import MethodView
-from webargs.flaskparser import use_args
 from werkzeug.wrappers import BaseResponse
 
 from .utils import unpack
