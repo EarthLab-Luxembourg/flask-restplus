@@ -21,8 +21,6 @@ from flask import make_response as original_flask_make_response
 from flask.helpers import _endpoint_from_view_func
 from flask.signals import got_request_exception
 
-from jsonschema import RefResolver
-
 from werkzeug import cached_property
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAcceptable, InternalServerError
@@ -75,8 +73,6 @@ class Api(object):
     :param str default: The default namespace base name (default to 'default')
     :param str default_label: The default namespace label (used in Swagger documentation)
     :param str default_mediatype: The default media type to return
-    :param bool validate: Whether or not the API should perform input payload validation.
-    :param bool ordered: Whether or not preserve order models and marshalling.
     :param str doc: The documentation path. If set to a false value, documentation is disabled.
                 (Default to '/')
     :param list decorators: Decorators to attach to every resource
@@ -85,20 +81,15 @@ class Api(object):
     :param dict authorizations: A Swagger Authorizations declaration as dictionary
     :param bool serve_challenge_on_401: Serve basic authentication challenge with 401
         responses (default 'False')
-    :param FormatChecker format_checker: A jsonschema.FormatChecker object that is hooked into
-        the Model validator. A default or a custom FormatChecker can be provided (e.g., with custom
-        checkers), otherwise the default action is to not enforce any format validation.
     '''
 
     def __init__(self, app=None, version='1.0', title=None, description=None,
             terms_url=None, license=None, license_url=None,
             contact=None, contact_url=None, contact_email=None,
             authorizations=None, security=None, doc='/', default_id=default_id,
-            default='default', default_label='Default namespace', validate=None,
-            tags=None, prefix='', ordered=False,
-            default_mediatype='application/json', decorators=None,
-            catch_all_404s=False, serve_challenge_on_401=False, format_checker=None,
-            **kwargs):
+            default='default', default_label='Default namespace',
+            tags=None, prefix='', default_mediatype='application/json', decorators=None,
+            catch_all_404s=False, serve_challenge_on_401=False, **kwargs):
         self.version = version
         self.title = title or 'API'
         self.description = description
@@ -111,8 +102,6 @@ class Api(object):
         self.authorizations = authorizations
         self.security = security
         self.default_id = default_id
-        self.ordered = ordered
-        self._validate = validate
         self._doc = doc
         self._doc_view = None
         self._default_error_handler = None
@@ -121,12 +110,9 @@ class Api(object):
         self.error_handlers = {}
         self._schema = None
         self.schemas = {}
-        self._refresolver = None
-        self.format_checker = format_checker
         self.namespaces = []
         self.default_namespace = self.namespace(default, default_label,
             endpoint='{0}-declaration'.format(default),
-            validate=validate,
             api=self,
             path='/',
         )
@@ -204,9 +190,6 @@ class Api(object):
                 self._register_view(app, resource, *urls, **kwargs)
 
         self._register_apidoc(app)
-        self._validate = self._validate if self._validate is not None else app.config.get('RESTPLUS_VALIDATE', False)
-        # app.config.setdefault('RESTPLUS_MASK_HEADER', 'X-Fields')
-        # app.config.setdefault('RESTPLUS_MASK_SWAGGER', True)
 
     def __getattr__(self, name):
         try:
@@ -446,7 +429,6 @@ class Api(object):
 
         :returns Namespace: a new namespace instance
         '''
-        kwargs['ordered'] = kwargs.get('ordered', self.ordered)
         ns = Namespace(*args, **kwargs)
         self.add_namespace(ns)
         return ns
@@ -747,12 +729,6 @@ class Api(object):
     def payload(self):
         '''Store the input payload in the current request context'''
         return request.get_json()
-
-    @property
-    def refresolver(self):
-        if not self._refresolver:
-            self._refresolver = RefResolver.from_schema(self.__schema__)
-        return self._refresolver
 
     @staticmethod
     def _blueprint_setup_add_url_rule_patch(blueprint_setup, rule, endpoint=None, view_func=None, **options):

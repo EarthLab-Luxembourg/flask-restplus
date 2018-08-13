@@ -28,19 +28,15 @@ class Namespace(object):
     :param str description: An optionale short description
     :param str path: An optional prefix path. If not provided, prefix is ``/+name``
     :param list decorators: A list of decorators to apply to each resources
-    :param bool validate: Whether or not to perform validation on this namespace
-    :param bool ordered: Whether or not to preserve order on models and marshalling
     :param Api api: an optional API to attache to the namespace
     '''
 
-    def __init__(self, name, description=None, path=None, decorators=None, validate=None,
-            authorizations=None, ordered=False, **kwargs):
+    def __init__(self, name, description=None, path=None, decorators=None, authorizations=None, **kwargs):
         self.name = name
         self.description = description
         self._path = path
 
         self._schema = None
-        self._validate = validate
         self.schemas = {}
         self.urls = {}
         self.decorators = decorators if decorators else []
@@ -48,7 +44,6 @@ class Namespace(object):
         self.error_handlers = {}
         self.default_error_handler = None
         self.authorizations = authorizations
-        self.ordered = ordered
         self.apis = []
         self.parser = FlaskParser(error_handler=self.handle_validation_error)
         self.custom_fields_mapping = {}
