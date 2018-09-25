@@ -347,7 +347,7 @@ For example, these two declarations are equivalent:
 
 .. code-block:: python
 
-    @api.route('/my-resource/<id>', endpoint='my-resource', doc={params:{'id': 'An ID'}})
+    @api.route('/my-resource/<id>', endpoint='my-resource', doc={'params':{'id': 'An ID'}})
     class MyResource(Resource):
         def get(self, id):
             return {}
@@ -686,6 +686,10 @@ You can hide some resources or methods from documentation using any of the follo
 
         def delete(self):
             return {}
+
+.. note::
+
+   Namespace tags without attached resources will be hidden automatically from the documentation.
 
 
 Documenting authorizations
