@@ -4,15 +4,14 @@ from __future__ import unicode_literals
 import re
 import fnmatch
 import inspect
+import base64
+import binascii
 
 from calendar import timegm
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_EVEN
 from email.utils import formatdate
 
-import base64
-
-import binascii
 from six import iteritems, itervalues, text_type, string_types
 from six.moves.urllib.parse import urlparse, urlunparse
 
@@ -26,7 +25,7 @@ from .utils import camel_to_dash, not_none
 
 __all__ = ('Raw', 'String', 'FormattedString', 'Url', 'DateTime', 'Date',
            'Boolean', 'Integer', 'Float', 'Arbitrary', 'Fixed',
-           'Nested', 'List', 'ClassName', 'Polymorph', 'Wildcard',
+           'Nested', 'List', 'ClassName', 'Polymorph', 'Wildcard', 'Base64',
            'StringMixin', 'MinMaxMixin', 'NumberMixin', 'MarshallingError')
 
 
