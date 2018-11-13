@@ -152,13 +152,26 @@ class SwaggerTest(object):
 
         data = client.get_specs('')
         assert 'host' not in data
+        assert data['basePath'] == '/'
 
+    @pytest.mark.options(server_name='api.restplus.org')
     def test_specs_endpoint_host(self, app, client):
-        app.config['SERVER_NAME'] = 'api.restplus.org'
+        # app.config['SERVER_NAME'] = 'api.restplus.org'
         restplus.Api(app)
 
         data = client.get_specs('')
         assert data['host'] == 'api.restplus.org'
+        assert data['basePath'] == '/'
+
+    @pytest.mark.options(server_name='api.restplus.org')
+    def test_specs_endpoint_host_with_url_prefix(self, app, client):
+        blueprint = Blueprint('api', __name__, url_prefix='/api/1')
+        restplus.Api(blueprint)
+        app.register_blueprint(blueprint)
+
+        data = client.get_specs('/api/1')
+        assert data['host'] == 'api.restplus.org'
+        assert data['basePath'] == '/api/1'
 
     @pytest.mark.options(server_name='restplus.org')
     def test_specs_endpoint_host_and_subdomain(self, app, client):
@@ -168,6 +181,7 @@ class SwaggerTest(object):
 
         data = client.get_specs(base_url='http://api.restplus.org')
         assert data['host'] == 'api.restplus.org'
+        assert data['basePath'] == '/'
 
     def test_specs_endpoint_tags_short(self, app, client):
         restplus.Api(app, tags=['tag-1', 'tag-2', 'tag-3'])
@@ -215,11 +229,13 @@ class SwaggerTest(object):
         assert data['tags'] == [{'name': 'ns'}, {'name': 'tag'}]
 
     def test_specs_endpoint_invalid_tags(self, app, client):
-        restplus.Api(app, tags=[
+        api = restplus.Api(app, tags=[
             {'description': 'Tag 1'}
         ])
 
         client.get_specs('', status=500)
+
+        assert list(api.__schema__.keys()) == ['error']
 
     def test_specs_endpoint_default_ns_with_resources(self, app, client):
         restplus.Api(app)
@@ -1517,9 +1533,6 @@ class SwaggerTest(object):
         })
 
         fields = api.model('Person', {
-            'name': restplus.fields.String,
-            'age': restplus.fields.Integer,
-            'birthdate': restplus.fields.DateTime,
             'address': restplus.fields.Nested(address_fields)
         })
 
@@ -1537,8 +1550,16 @@ class SwaggerTest(object):
 
         assert 'definitions' in data
         assert 'Person' in data['definitions']
+        assert data['definitions']['Person'] == {
+            'properties': {
+                'address': {
+                    '$ref': '#/definitions/Address'
+                },
+            },
+            'type': 'object'
+        }
 
-        assert 'Address' in data['definitions'].keys()
+        assert 'Address' in data['definitions']
         assert data['definitions']['Address'] == {
             'properties': {
                 'road': {
@@ -1551,6 +1572,50 @@ class SwaggerTest(object):
         path = data['paths']['/model-as-dict/']
         assert path['get']['responses']['200']['schema']['$ref'] == '#/definitions/Person'
         assert path['post']['responses']['200']['schema']['$ref'] == '#/definitions/Person'
+
+    def test_model_as_nested_dict_with_details(self, api, client):
+        address_fields = api.model('Address', {
+            'road': restplus.fields.String,
+        })
+
+        fields = api.model('Person', {
+            'address': restplus.fields.Nested(address_fields, description='description', readonly=True)
+        })
+
+        @api.route('/model-as-dict/')
+        class ModelAsDict(restplus.Resource):
+            @api.doc(model=fields)
+            def get(self):
+                return {}
+
+            @api.doc(model='Person')
+            def post(self):
+                return {}
+
+        data = client.get_specs()
+
+        assert 'definitions' in data
+        assert 'Person' in data['definitions']
+        assert data['definitions']['Person'] == {
+            'properties': {
+                'address': {
+                    'description': 'description',
+                    'readOnly': True,
+                    'allOf': [{'$ref': '#/definitions/Address'}]
+                },
+            },
+            'type': 'object'
+        }
+
+        assert 'Address' in data['definitions']
+        assert data['definitions']['Address'] == {
+            'properties': {
+                'road': {
+                    'type': 'string'
+                },
+            },
+            'type': 'object'
+        }
 
     def test_model_as_flat_dict_with_marchal_decorator(self, api, client):
         fields = api.model('Person', {
