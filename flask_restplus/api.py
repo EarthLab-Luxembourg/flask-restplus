@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 import difflib
 import inspect
+from itertools import chain
 import logging
 import operator
 import re
@@ -154,6 +155,7 @@ class Api(object):
         :param str license_url: The license page URL (used in Swagger documentation)
 
         '''
+        self.app = app
         self.title = kwargs.get('title', self.title)
         self.description = kwargs.get('description', self.description)
         self.terms_url = kwargs.get('terms_url', self.terms_url)
@@ -186,8 +188,8 @@ class Api(object):
         app.handle_user_exception = partial(self.user_error_router, app.handle_user_exception)
 
         if len(self.resources) > 0:
-            for resource, urls, kwargs in self.resources:
-                self._register_view(app, resource, *urls, **kwargs)
+            for resource, namespace, urls, kwargs in self.resources:
+                self._register_view(app, resource, namespace, *urls, **kwargs)
 
         self._register_apidoc(app)
 
@@ -221,6 +223,7 @@ class Api(object):
             self._register_view(
                 app_or_blueprint,
                 SwaggerView,
+                self.default_namespace,
                 '/swagger.json',
                 endpoint=endpoint,
                 resource_class_args=(self, )
@@ -241,12 +244,12 @@ class Api(object):
         self.endpoints.add(endpoint)
 
         if self.app is not None:
-            self._register_view(self.app, resource, *urls, **kwargs)
+            self._register_view(self.app, resource, namespace, *urls, **kwargs)
         else:
-            self.resources.append((resource, urls, kwargs))
+            self.resources.append((resource, namespace, urls, kwargs))
         return endpoint
 
-    def _register_view(self, app, resource, *urls, **kwargs):
+    def _register_view(self, app, resource, namespace, *urls, **kwargs):
         endpoint = kwargs.pop('endpoint', None) or camel_to_dash(resource.__name__)
         resource_class_args = kwargs.pop('resource_class_args', ())
         resource_class_kwargs = kwargs.pop('resource_class_kwargs', {})
@@ -255,17 +258,20 @@ class Api(object):
         if endpoint in getattr(app, 'view_functions', {}):
             previous_view_class = app.view_functions[endpoint].__dict__['view_class']
 
-            # if you override the endpoint with a different class, avoid the collision by raising an exception
+            # if you override the endpoint with a different class, avoid the
+            # collision by raising an exception
             if previous_view_class != resource:
-                msg = 'This endpoint (%s) is already set to the class %s.' % (endpoint, previous_view_class.__name__)
-                raise ValueError(msg)
+                msg = 'This endpoint (%s) is already set to the class %s.'
+                raise ValueError(msg % (endpoint, previous_view_class.__name__))
 
         resource.mediatypes = self.mediatypes_method()  # Hacky
         resource.endpoint = endpoint
+
         resource_func = self.output(resource.as_view(endpoint, self, *resource_class_args,
             **resource_class_kwargs))
 
-        for decorator in self.decorators:
+        # Apply Namespace and Api decorators to a resource
+        for decorator in chain(namespace.decorators, self.decorators):
             resource_func = decorator(resource_func)
 
         for url in urls:
@@ -464,7 +470,7 @@ class Api(object):
 
         :rtype: str
         '''
-        return url_for(self.endpoint('root'))
+        return url_for(self.endpoint('root'), _external=False)
 
     @cached_property
     def __schema__(self):
