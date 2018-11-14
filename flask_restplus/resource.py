@@ -5,6 +5,8 @@ from flask import request
 from flask.views import MethodView
 from werkzeug.wrappers import BaseResponse
 
+# from .model import ModelBase
+
 from .utils import unpack
 
 
@@ -37,8 +39,6 @@ class Resource(MethodView):
         for decorator in self.method_decorators:
             meth = decorator(meth)
 
-        # meth = self.validate_payload(meth) - Now done by webargs
-
         resp = meth(*args, **kwargs)
 
         if isinstance(resp, BaseResponse):
@@ -54,11 +54,3 @@ class Resource(MethodView):
             return resp
 
         return resp
-
-    # def validate_payload(self, func):
-    #     '''Perform a payload validation on expected model if necessary'''
-    #     if getattr(func, '__apidoc__', False) is not False:
-    #         doc = func.__apidoc__
-    #         for expect in doc.get('expect', []):
-    #             func = use_args(**expect)(func)
-    #     return func

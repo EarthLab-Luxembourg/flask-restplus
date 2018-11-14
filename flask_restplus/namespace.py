@@ -2,20 +2,18 @@
 from __future__ import unicode_literals
 
 import inspect
-
 import six
 import warnings
 import marshmallow as ma
 
 from flask import request
 from flask.views import http_method_funcs
-
 from webargs.flaskparser import FlaskParser, abort as wa_abort
 
-from ._http import HTTPStatus
 from .errors import abort
 from .marshalling import marshal, marshal_with
 from .utils import merge
+from ._http import HTTPStatus
 
 
 class Namespace(object):
@@ -30,7 +28,6 @@ class Namespace(object):
     :param list decorators: A list of decorators to apply to each resources
     :param Api api: an optional API to attache to the namespace
     '''
-
     def __init__(self, name, description=None, path=None, decorators=None, authorizations=None, **kwargs):
         self.name = name
         self.description = description
@@ -45,10 +42,10 @@ class Namespace(object):
         self.default_error_handler = None
         self.authorizations = authorizations
         self.apis = []
-        self.parser = FlaskParser(error_handler=self.handle_validation_error)
-        self.custom_fields_mapping = {}
         if 'api' in kwargs:
             self.apis.append(kwargs['api'])
+        self.parser = FlaskParser(error_handler=self.handle_validation_error)
+        self.custom_fields_mapping = {}
 
     @property
     def path(self):
@@ -106,12 +103,12 @@ class Namespace(object):
                     continue
                 unshortcut_params_description(doc[http_method])
                 handle_deprecations(doc[http_method])
-        # Ensure expect is always a list
-        if 'expect' in doc and not isinstance(doc['expect'], list):
-            doc['expect'] = [doc['expect']]
-        # Merge providing expected args with current one cause 'merge' call will override
-        if 'expect' in current_doc:
-            doc['expect'].extend(current_doc['expect'])
+                if 'expect' in doc[http_method]:
+                    if not isinstance(doc[http_method]['expect'], (list, tuple)):
+                        doc[http_method]['expect'] = [doc[http_method]['expect']]
+                    # Append expect from current doc if any
+                    current_expect = current_doc.get(http_method, {}).get('expect', [])
+                    doc[http_method]['expect'].extend(current_expect)
         cls.__apidoc__ = merge(current_doc, doc)
 
     def doc(self, shortcut=None, **kwargs):
@@ -138,14 +135,6 @@ class Namespace(object):
         abort(*args, **kwargs)
 
     def register_schema(self, schema, name=None) -> ma.Schema:
-        '''
-        Register the given Schema for this namespace.
-        If 'name' is not provided, the schema name will be used instead.
-
-        :param schema: Marshmallow schema to register (Either a schema class or an instance)
-        :param name: Name of the schema (optional)
-        :return ma.Schema: The given schema
-        '''
         if not name:
             if isinstance(schema, ma.Schema):
                 schema_class = type(schema)
@@ -157,64 +146,21 @@ class Namespace(object):
             api.schemas[name] = schema
         return schema
 
-    def expect_kwargs(self, *args, **kwargs):
+    def marshal_with(self, fields, code=HTTPStatus.OK, description=None):
         '''
-        A decorator to specify expected inputs.
+        A decorator specifying the fields to use for serialization.
 
-        This is a shortcut to :meth:`expect_args` with ``as_kwargs=True``.
-        '''
-        kwargs['as_kwargs'] = True
-        return self.expect_args(*args, **kwargs)
-
-    def expect_args(self, argmap, locations: tuple = None, as_kwargs: bool = False, validate: callable = None):
-        '''
-        A decorator to specify expected inputs.
-
-        This decorator is a wrapper for webargs.flaskparser.use_args which, does the same job and extract expected
-        parameters to be well documented in the Swagger.
-
-        See also: https://webargs.readthedocs.io/en/latest/api.html?highlight=use_args#webargs.core.Parser.use_args
-
-        :param argmap: Either a `marshmallow.Schema`, a `dict`
-            of argname -> `marshmallow.fields.Field` pairs, or a callable
-            which accepts a request and returns a `marshmallow.Schema`.
-        :param tuple locations: Where on the request to search for values.
-        :param bool as_kwargs: Whether to insert arguments as keyword arguments.
-        :param callable validate: Validation function that receives the dictionary
-            of parsed arguments. If the function returns ``False``, the parser
-            will raise a :exc:`ValidationError`. Please note that you can also set custom validation directly on yout
-            Marshmallow schema/fields
-        '''
-        def wrapper(func):
-            expect = {'argmap': argmap}
-            if locations:
-                expect['in'] = locations[0]
-            # Get the method for swagger documenting (only set schema and 'in' properties
-            func = self.doc(expect=expect)(func)
-            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(func)
-        return wrapper
-
-    def as_list(self, field):
-        '''Allow to specify nested lists for documentation'''
-        field.__apidoc__ = merge(getattr(field, '__apidoc__', {}), {'as_list': True})
-        return field
-
-    def marshal_with(self, argmap, code=HTTPStatus.OK, description=None):
-        '''
-        A decorator specifying the schema/fields to use for serialization.
-
-        :param argmap: Marshmallow schema or dict of Marshmallow fields
         :param int code: Optionally give the expected HTTP response code if its different from 200
 
         '''
         def wrapper(func):
             doc = {
                 'responses': {
-                    code: (description, argmap)
+                    code: (description, fields)
                 }
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
-            return marshal_with(argmap)(func)
+            return marshal_with(fields)(func)
         return wrapper
 
     def marshal(self, *args, **kwargs):
@@ -253,7 +199,7 @@ class Namespace(object):
 
         :param int code: the HTTP status code
         :param str description: a small description about the response
-        :param Schema schema: an optional response schema
+        :param ma.Schema schema: an optional response model
 
         '''
         return self.doc(responses={code: (description, schema, kwargs)})
@@ -295,6 +241,43 @@ class Namespace(object):
     def payload(self):
         '''Store the input payload in the current request context'''
         return request.get_json()
+
+    def expect_kwargs(self, *args, **kwargs):
+        '''
+        A decorator to specify expected inputs.
+
+        This is a shortcut to :meth:`expect_args` with ``as_kwargs=True``.
+        '''
+        kwargs['as_kwargs'] = True
+        return self.expect_args(*args, **kwargs)
+
+    def expect_args(self, argmap, locations: tuple = None, as_kwargs: bool = False, validate: callable = None):
+        '''
+        A decorator to specify expected inputs.
+
+        This decorator is a wrapper for webargs.flaskparser.use_args which, does the same job and extract expected
+        parameters to be well documented in the Swagger.
+
+        See also: https://webargs.readthedocs.io/en/latest/api.html?highlight=use_args#webargs.core.Parser.use_args
+
+        :param argmap: Either a `marshmallow.Schema`, a `dict`
+            of argname -> `marshmallow.fields.Field` pairs, or a callable
+            which accepts a request and returns a `marshmallow.Schema`.
+        :param tuple locations: Where on the request to search for values.
+        :param bool as_kwargs: Whether to insert arguments as keyword arguments.
+        :param callable validate: Validation function that receives the dictionary
+            of parsed arguments. If the function returns ``False``, the parser
+            will raise a :exc:`ValidationError`. Please note that you can also set custom validation directly on yout
+            Marshmallow schema/fields
+        '''
+        def wrapper(func):
+            expect = {'argmap': argmap}
+            if locations:
+                expect['in'] = locations[0]
+            # Get the method for swagger documenting (only set schema and 'in' properties
+            func = self.doc(expect=expect)(func)
+            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(func)
+        return wrapper
 
     def map_to_openapi_type(self, *args):
         """

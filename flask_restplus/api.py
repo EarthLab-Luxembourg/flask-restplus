@@ -7,7 +7,6 @@ from itertools import chain
 import logging
 import operator
 import re
-
 import six
 import sys
 import marshmallow as ma
@@ -22,12 +21,15 @@ from flask import make_response as original_flask_make_response
 from flask.helpers import _endpoint_from_view_func
 from flask.signals import got_request_exception
 
+# from jsonschema import RefResolver
+
 from werkzeug import cached_property
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAcceptable, InternalServerError
 from werkzeug.wrappers import BaseResponse
 
 from . import apidoc
+# from .mask import ParseError, MaskError
 from .namespace import Namespace
 from .postman import PostmanCollectionV1
 from .resource import Resource
@@ -88,9 +90,9 @@ class Api(object):
             terms_url=None, license=None, license_url=None,
             contact=None, contact_url=None, contact_email=None,
             authorizations=None, security=None, doc='/', default_id=default_id,
-            default='default', default_label='Default namespace',
-            tags=None, prefix='', default_mediatype='application/json', decorators=None,
-            catch_all_404s=False, serve_challenge_on_401=False, **kwargs):
+            default='default', default_label='Default namespace', tags=None, prefix='',
+            default_mediatype='application/json', decorators=None, catch_all_404s=False, serve_challenge_on_401=False,
+            **kwargs):
         self.version = version
         self.title = title or 'API'
         self.description = description
@@ -111,6 +113,8 @@ class Api(object):
         self.error_handlers = {}
         self._schema = None
         self.schemas = {}
+        # self._refresolver = None
+        # self.format_checker = format_checker
         self.namespaces = []
         self.default_namespace = self.namespace(default, default_label,
             endpoint='{0}-declaration'.format(default),
@@ -407,27 +411,14 @@ class Api(object):
         for resource, urls, kwargs in ns.resources:
             self.register_resource(ns, resource, *self.ns_urls(ns, urls), **kwargs)
         # Register schemas
-        for name, schema in ns.schemas.items():
-            self.schemas[name] = schema
+        for name, definition in six.iteritems(ns.schemas):
+            self.schemas[name] = definition
         # Register error handlers
         for exception, handler in ns.error_handlers.items():
             self.error_handlers[exception] = handler
         # Register custom fields mapping
         for field_type, args in ns.custom_fields_mapping.items():
             self.custom_fields_mapping[field_type] = args
-
-    def register_schema(self, schema: Type[ma.Schema], name=None) -> ma.Schema:
-        '''
-        Register the given Schema for this api.
-        If 'name' is not provided, the schema name will be used instead.
-
-        :param schema: Marshmallow schema to register
-        :param name: Name of the schema (optional)
-        :return ma.Schema: The given schema
-        '''
-        name = name or schema.__name__
-        self.schemas[name] = schema
-        return schema
 
     def namespace(self, *args, **kwargs):
         '''
@@ -684,7 +675,7 @@ class Api(object):
             current_app.log_exception(exc_info)
 
         elif code == HTTPStatus.NOT_FOUND and current_app.config.get("ERROR_404_HELP", True) \
-            and include_message_in_response:
+                and include_message_in_response:
             data['message'] = self._help_on_404(data.get('message', None))
 
         elif code == HTTPStatus.NOT_ACCEPTABLE and self.default_mediatype is None:
@@ -846,10 +837,23 @@ class Api(object):
             endpoint = '{0}.{1}'.format(self.blueprint.name, endpoint)
         return url_for(endpoint, **values)
 
+    def register_schema(self, schema: Type[ma.Schema], name=None) -> ma.Schema:
+        '''
+        Register the given Marshmallow Schema for this api.
+        If 'name' is not provided, the model name will be used instead.
+
+        :param schema: Marshmallow schema to register
+        :param name: Name of the model (optional)
+        :return ma.Schema: The given model
+        '''
+        name = name or schema.__name__
+        self.schemas[name] = schema
+        return schema
+
     def has_schema(self, schema: Type[ma.Schema]):
         '''
         Returns True if the given schema has been registered to this API
-        :param schema: Marshmallow schema
+        :param model: Marshmallow schema
         :return: True if the given schema has been registered to this API, false otherwise
         '''
         return schema in list(self.schemas.values())

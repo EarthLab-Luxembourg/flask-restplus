@@ -2,13 +2,13 @@
 from __future__ import unicode_literals
 
 import re
+import marshmallow as ma
+
 from collections import OrderedDict
 from copy import deepcopy
-
 from six import iteritems
-
-import marshmallow as ma
 from webargs import argmap2schema
+
 from ._http import HTTPStatus
 
 FIRST_CAP_RE = re.compile('(.)([A-Z][a-z]+)')
