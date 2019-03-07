@@ -104,12 +104,10 @@ class Namespace(object):
                     continue
                 unshortcut_params_description(doc[http_method])
                 handle_deprecations(doc[http_method])
-                if 'expect' in doc[http_method]:
-                    if not isinstance(doc[http_method]['expect'], (list, tuple)):
-                        doc[http_method]['expect'] = [doc[http_method]['expect']]
-                    # Append expect from current doc if any
-                    current_expect = current_doc.get(http_method, {}).get('expect', [])
-                    doc[http_method]['expect'].extend(current_expect)
+        if 'expect' in doc and not isinstance(doc['expect'], list):
+            doc['expect'] = [doc['expect']]
+        if 'expect' in current_doc:
+            doc['expect'].extend(current_doc['expect'])         
         cls.__apidoc__ = merge(current_doc, doc)
 
     def doc(self, shortcut=None, **kwargs):
@@ -274,9 +272,8 @@ class Namespace(object):
             Marshmallow schema/fields
         '''
         def wrapper(func):
-            expect = {'argmap': argmap, 'in': location or 'json'}
             # Get the method for swagger documenting (only set schema and 'in' properties
-            func = self.doc(expect=expect)(func)
+            func = self.doc(expect={'argmap': argmap, 'location': location or 'json'})(func)
             # Decorate returned func with webargs decorator
             return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=[location])(func)
         return wrapper
