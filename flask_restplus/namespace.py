@@ -28,6 +28,7 @@ class Namespace(object):
     :param list decorators: A list of decorators to apply to each resources
     :param Api api: an optional API to attache to the namespace
     '''
+
     def __init__(self, name, description=None, path=None, decorators=None, authorizations=None, **kwargs):
         self.name = name
         self.description = description
@@ -251,7 +252,7 @@ class Namespace(object):
         kwargs['as_kwargs'] = True
         return self.expect_args(*args, **kwargs)
 
-    def expect_args(self, argmap, locations: tuple = None, as_kwargs: bool = False, validate: callable = None):
+    def expect_args(self, argmap, location: str = None, as_kwargs: bool = False, validate: callable = None):
         '''
         A decorator to specify expected inputs.
 
@@ -263,7 +264,9 @@ class Namespace(object):
         :param argmap: Either a `marshmallow.Schema`, a `dict`
             of argname -> `marshmallow.fields.Field` pairs, or a callable
             which accepts a request and returns a `marshmallow.Schema`.
-        :param tuple locations: Where on the request to search for values.
+        :param str locations: Where to search for args. Defaults to 'json'. Please note that each field
+            in `argmap` can provide a specific `location` property.
+            See https://webargs.readthedocs.io/en/latest/quickstart.html#request-locations
         :param bool as_kwargs: Whether to insert arguments as keyword arguments.
         :param callable validate: Validation function that receives the dictionary
             of parsed arguments. If the function returns ``False``, the parser
@@ -271,13 +274,11 @@ class Namespace(object):
             Marshmallow schema/fields
         '''
         def wrapper(func):
-            expect = {'argmap': argmap}
-            if locations:
-                expect['in'] = locations[0]
+            expect = {'argmap': argmap, 'in': location or 'json'}
             # Get the method for swagger documenting (only set schema and 'in' properties
             func = self.doc(expect=expect)(func)
             # Decorate returned func with webargs decorator
-            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(func)
+            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=[location])(func)
         return wrapper
 
     def map_to_openapi_type(self, *args):
