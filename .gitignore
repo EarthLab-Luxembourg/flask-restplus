@@ -56,6 +56,12 @@ histograms/
 *.log
 *.pot
 
+# Pipenv
+.venv/
+
+# VS code
+.vscode/
+
 # Sphinx documentation
 doc/_build/
 
