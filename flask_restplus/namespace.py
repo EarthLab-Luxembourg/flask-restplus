@@ -276,6 +276,7 @@ class Namespace(object):
                 expect['in'] = locations[0]
             # Get the method for swagger documenting (only set schema and 'in' properties
             func = self.doc(expect=expect)(func)
+            # Decorate returned func with webargs decorator
             return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=locations)(func)
         return wrapper
 
