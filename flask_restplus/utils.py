@@ -7,7 +7,7 @@ import marshmallow as ma
 from collections import OrderedDict
 from copy import deepcopy
 from six import iteritems
-from webargs import argmap2schema
+from webargs import dict2schema
 
 from ._http import HTTPStatus
 
@@ -131,5 +131,5 @@ def get_schema(argmap, req=None):
     elif callable(argmap):
         schema = argmap(req)
     else:
-        schema = argmap2schema(argmap)()
+        schema = dict2schema(argmap)()
     return schema
