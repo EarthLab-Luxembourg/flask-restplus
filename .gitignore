@@ -59,7 +59,7 @@ histograms/
 # Pipenv
 .venv/
 
-# VS code
+# IDE
 .vscode/
 
 # Sphinx documentation
@@ -68,5 +68,4 @@ doc/_build/
 # Specifics
 # flask_restplus/static
 node_modules
-.idea
 test.py
