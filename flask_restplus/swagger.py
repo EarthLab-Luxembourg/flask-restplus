@@ -17,6 +17,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from .utils import merge, not_none, get_schema
 from ._http import HTTPStatus
 
+# TODO: Functions which transforms apidoc into real swagger doc should be moved into an apispec plugin dedicated
 
 #: Maps Flask/Werkzeug rooting types to Swagger ones
 PATH_TYPES = {
@@ -34,6 +35,17 @@ PY_TYPES = {
     str: 'string',
     bool: 'boolean',
     None: 'void'
+}
+
+#: Maps Webargs locations to Swagger 2.0
+LOCATIONS = {
+    'querystring': 'query',
+    'query': 'query',
+    'json': 'body',
+    'form': 'formData',
+    'headers': 'header',
+    'files': 'formData',
+    'cookies': ''
 }
 
 RE_URL = re.compile(r'<(?:[^:<>]+:)?([^<>]+)>')
@@ -203,17 +215,17 @@ class Swagger(object):
 
         # Extract API tags
         for tag in tags:
-            self.spec.add_tag(tag)
+            self.spec.tag(tag)
 
         # Extract API definitions
         for name, schema in self.api.schemas.items():
-            self.spec.definition(name, schema=schema)
+            self.spec.components.schema(name, schema=schema)
 
         # Extract API paths
         for ns in self.api.namespaces:
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
-                    self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
+                    self.spec.path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
 
         return self.spec.to_dict()
 
@@ -271,9 +283,10 @@ class Swagger(object):
             method_doc = merge(method_doc, getattr(method_impl, '__apidoc__', OrderedDict()))
             if method_doc is not False:
                 method_doc['docstring'] = parse_docstring(method_impl)
-                method_params = merge(method_params, method_doc.get('params', {}))
+                method_params = merge(params, method_doc.get('params', {}))
                 inherited_params = OrderedDict((k, v) for k, v in iteritems(params) if k in method_params)
                 method_doc['params'] = merge(inherited_params, method_params)
+                print(expect, method_doc.get('expect', []))
                 method_doc['expect'] = expect + method_doc.get('expect', [])
                 for name, param in method_doc['params'].items():
                     key = (name, param.get('in', 'query'))
@@ -407,8 +420,8 @@ class Swagger(object):
         for expected in doc.get('expect', []):
             if 'argmap' in expected:
                 expected['schema'] = get_schema(expected.pop('argmap'))
-            if 'in' not in expected:
-                expected['in'] = 'body'
+            expected['in'] = LOCATIONS[expected.pop('location')]
+              
             params.append(expected)
 
         return params
