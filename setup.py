@@ -63,13 +63,13 @@ doc_require = pip('doc')
 tests_require = pip('test')
 
 setup(
-    name='flask-restplus',
+    name='flask-restplus-ext',
     version=__version__,
     description=__description__,
     long_description=long_description,
-    url='https://github.com/noirbizarre/flask-restplus',
-    author='Axel Haustant',
-    author_email='axel@data.gouv.fr',
+    url='https://github.com/EarthLab-Luxembourg/flask-restplus',
+    author='Benoit Godard',
+    author_email='benoit.godard@earthlab.lu',
     packages=find_packages(exclude=['tests', 'tests.*']),
     include_package_data=True,
     install_requires=install_requires,

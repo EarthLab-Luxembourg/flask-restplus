@@ -128,6 +128,7 @@ class Swagger(object):
     '''
     A Swagger documentation wrapper for an API instance.
     '''
+
     def __init__(self, api):
         self.api = api
         self.spec = None
@@ -215,7 +216,6 @@ class Swagger(object):
                     self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
 
         return self.spec.to_dict()
-
 
     def get_host(self):
         hostname = current_app.config.get('SERVER_NAME', None) or None
@@ -437,7 +437,7 @@ class Swagger(object):
                     else:
                         responses[code] = {'description': description}
                     if model:
-                        responses[code]['schema'] = schema
+                        responses[code]['schema'] = model
                     self.process_headers(responses[code], doc, method, kwargs.get('headers'))
             if 'model' in d:
                 code = str(d.get('default_code', HTTPStatus.OK))
