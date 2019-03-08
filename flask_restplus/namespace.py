@@ -107,7 +107,7 @@ class Namespace(object):
         if 'expect' in doc and not isinstance(doc['expect'], list):
             doc['expect'] = [doc['expect']]
         if 'expect' in current_doc:
-            doc['expect'].extend(current_doc['expect'])         
+            doc['expect'].extend(current_doc['expect'])
         cls.__apidoc__ = merge(current_doc, doc)
 
     def doc(self, shortcut=None, **kwargs):

@@ -18,6 +18,7 @@ from .utils import merge, not_none, get_schema
 from ._http import HTTPStatus
 
 # TODO: Functions which transforms apidoc into real swagger doc should be moved into an apispec plugin dedicated
+# TODO: Register reused parameters (swagger allow to register api wide parameters for being reused over opeerations)
 
 #: Maps Flask/Werkzeug rooting types to Swagger ones
 PATH_TYPES = {
@@ -421,7 +422,7 @@ class Swagger(object):
             if 'argmap' in expected:
                 expected['schema'] = get_schema(expected.pop('argmap'))
             expected['in'] = LOCATIONS[expected.pop('location')]
-              
+
             params.append(expected)
 
         return params
