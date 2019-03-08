@@ -145,14 +145,11 @@ class Namespace(object):
             api.schemas[name] = schema
         return schema
 
-    def marshal_with(self, fields, as_list=None, code=HTTPStatus.OK, description=None):
+    def marshal_with(self, fields, code=HTTPStatus.OK, description=None):
         '''
         A decorator specifying the fields to use for serialization.
 
         :param int code: Optionally give the expected HTTP response code if its different from 200
-        :param bool as_list: Optionnaly indicates to marshal response as a list of given schema
-           (i.e will pass `many=True` to marshamallow `dump` function)
-
         '''
         def wrapper(func):
             doc = {
@@ -161,12 +158,8 @@ class Namespace(object):
                 }
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
-            return marshal_with(fields, as_list=as_list)(func)
+            return marshal_with(fields)(func)
         return wrapper
-
-    def marshal_list_with(self, fields, **kwargs):
-        '''A shortcut decorator for :meth:`~Api.marshal_with` with ``as_list=True``'''
-        return self.marshal_with(fields, True, **kwargs)
 
     def marshal(self, *args, **kwargs):
         '''A shortcut to the :func:`marshal` helper'''
