@@ -150,6 +150,8 @@ class Namespace(object):
         A decorator specifying the fields to use for serialization.
 
         :param int code: Optionally give the expected HTTP response code if its different from 200
+        :param bool as_list: Optionnaly indicates to marshal response as a list of given schema
+           (i.e will pass `many=True` to marshamallow `dump` function)
 
         '''
         def wrapper(func):
@@ -254,7 +256,7 @@ class Namespace(object):
         kwargs['as_kwargs'] = True
         return self.expect_args(*args, **kwargs)
 
-    def expect_args(self, argmap, location: str = None, as_kwargs: bool = False, validate: callable = None):
+    def expect_args(self, argmap, location=None, **kwargs):
         '''
         A decorator to specify expected inputs.
 
@@ -266,20 +268,18 @@ class Namespace(object):
         :param argmap: Either a `marshmallow.Schema`, a `dict`
             of argname -> `marshmallow.fields.Field` pairs, or a callable
             which accepts a request and returns a `marshmallow.Schema`.
-        :param str locations: Where to search for args. Defaults to 'json'. Please note that each field
-            in `argmap` can provide a specific `location` property.
+        :param str location: Where to search for args. Defaults to 'json'. Please note that each field
+            in `argmap` can provide a specific `location` property. 
             See https://webargs.readthedocs.io/en/latest/quickstart.html#request-locations
-        :param bool as_kwargs: Whether to insert arguments as keyword arguments.
-        :param callable validate: Validation function that receives the dictionary
-            of parsed arguments. If the function returns ``False``, the parser
-            will raise a :exc:`ValidationError`. Please note that you can also set custom validation directly on yout
-            Marshmallow schema/fields
+        :param kwargs: Additional keyword arguments passed directly to webargs `use_args` function. 
+            Please note however that `locations` argument can not be passed
         '''
         def wrapper(func):
+            location_ = location or 'json'
             # Get the method for swagger documenting (only set schema and 'in' properties
-            func = self.doc(expect={'argmap': argmap, 'location': location or 'json'})(func)
+            func = self.doc(expect={'argmap': argmap, 'location': location_})(func)
             # Decorate returned func with webargs decorator
-            return self.parser.use_args(argmap, as_kwargs=as_kwargs, validate=validate, locations=[location])(func)
+            return self.parser.use_args(argmap, locations=[location_], **kwargs)(func)
         return wrapper
 
     def map_to_openapi_type(self, *args):
