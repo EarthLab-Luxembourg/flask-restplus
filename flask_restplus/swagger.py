@@ -287,7 +287,6 @@ class Swagger(object):
                 method_params = merge(params, method_doc.get('params', {}))
                 inherited_params = OrderedDict((k, v) for k, v in iteritems(params) if k in method_params)
                 method_doc['params'] = merge(inherited_params, method_params)
-                print(expect, method_doc.get('expect', []))
                 method_doc['expect'] = expect + method_doc.get('expect', [])
                 for name, param in method_doc['params'].items():
                     key = (name, param.get('in', 'query'))
