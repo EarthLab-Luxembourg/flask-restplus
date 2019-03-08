@@ -21,15 +21,12 @@ from flask import make_response as original_flask_make_response
 from flask.helpers import _endpoint_from_view_func
 from flask.signals import got_request_exception
 
-# from jsonschema import RefResolver
-
 from werkzeug import cached_property
 from werkzeug.datastructures import Headers
 from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAcceptable, InternalServerError
 from werkzeug.wrappers import BaseResponse
 
 from . import apidoc
-# from .mask import ParseError, MaskError
 from .namespace import Namespace
 from .postman import PostmanCollectionV1
 from .resource import Resource
@@ -39,6 +36,8 @@ from .representations import output_json
 from ._http import HTTPStatus
 
 RE_RULES = re.compile('(<.*>)')
+
+# TODO: restore Mask 
 
 # List headers that should never be handled by Flask-RESTPlus
 HEADERS_BLACKLIST = ('Content-Length',)
@@ -876,6 +875,7 @@ class Api(object):
 
 class SwaggerView(Resource):
     '''Render the Swagger specifications as JSON'''
+
     def get(self):
         schema = self.api.__schema__
         return schema, HTTPStatus.INTERNAL_SERVER_ERROR if 'error' in schema else HTTPStatus.OK

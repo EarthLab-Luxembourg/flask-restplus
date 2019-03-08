@@ -11,7 +11,7 @@ from .utils import unpack, get_schema
 logger = logging.getLogger(__name__)
 
 
-def marshal(data, fields):
+def marshal(data, fields, as_list=None):
     """Takes raw data (in the form of a dict, list, object) and a dict of
     fields to output and filters the data based on those fields.
 
@@ -28,7 +28,8 @@ def marshal(data, fields):
 
     """
     schema = get_schema(fields)
-    out, errors = schema.dump(data)
+    # if as_list is None, fallback to schema.many
+    out, errors = schema.dump(data, many=as_list)
 
     # Not sure about what to do with errors, so we just log them
     if errors and len(errors) > 0:
@@ -53,6 +54,7 @@ class marshal_with(object):
 
     see :meth:`flask_restplus.marshal`
     """
+
     def __init__(self, fields):
         """
         :param fields: a dict of whose keys will make up the final
@@ -91,6 +93,7 @@ class marshal_with_field(object):
 
     see :meth:`flask_restplus.marshal_with`
     """
+
     def __init__(self, field):
         """
         :param field: a single field with which to marshal the output.
