@@ -55,12 +55,13 @@ class marshal_with(object):
     see :meth:`flask_restplus.marshal`
     """
 
-    def __init__(self, fields):
+    def __init__(self, fields, as_list=None):
         """
         :param fields: a dict of whose keys will make up the final
                        serialized response output
         """
         self.fields = fields
+        self.as_list = as_list
 
     def __call__(self, f):
         @wraps(f)
@@ -69,12 +70,12 @@ class marshal_with(object):
             if isinstance(resp, tuple):
                 data, code, headers = unpack(resp)
                 return (
-                    marshal(data, self.fields),
+                    marshal(data, self.fields, as_list=self.as_list),
                     code,
                     headers
                 )
             else:
-                return marshal(resp, self.fields)
+                return marshal(resp, self.fields, as_list=self.as_list)
 
         return wrapper
 
