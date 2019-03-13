@@ -158,6 +158,7 @@ class Namespace(object):
 
         :param int code: Optionally give the expected HTTP response code if its different from 200
         '''
+        # TODO: allow to use with decorator for api-level error handler in order to add schema to responses
         def wrapper(func):
             doc = {
                 'responses': {
@@ -207,6 +208,7 @@ class Namespace(object):
         :param ma.Schema schema: an optional response model
 
         '''
+        # TODO: Allow to reference pre-defined responses
         return self.doc(responses={code: (description, schema, kwargs)})
 
     def header(self, name, description=None, **kwargs):
