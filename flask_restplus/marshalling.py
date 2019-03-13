@@ -6,12 +6,15 @@ import marshmallow as ma
 
 from functools import wraps
 
+from flask import request, current_app, has_app_context
+
+from .mask import Mask, apply as apply_mask
 from .utils import unpack, get_schema
 
 logger = logging.getLogger(__name__)
 
 
-def marshal(data, fields):
+def marshal(data, fields, mask=None):
     """Takes raw data (in the form of a dict, list, object) and a dict of
     fields to output and filters the data based on those fields.
 
@@ -27,7 +30,10 @@ def marshal(data, fields):
     {'a': 100, 'c': None, 'd': None}
 
     """
-    return get_schema(fields).dump(data)
+    out = get_schema(fields).dump(data)
+    if mask:
+      out = apply_mask(out, fields, mask)
+    return out
 
 
 class marshal_with(object):
@@ -57,16 +63,19 @@ class marshal_with(object):
         @wraps(f)
         def wrapper(*args, **kwargs):
             resp = f(*args, **kwargs)
+            mask = None
+            if has_app_context():
+                mask_header = current_app.config['RESTPLUS_MASK_HEADER']
+                mask = request.headers.get(mask_header)
             if isinstance(resp, tuple):
                 data, code, headers = unpack(resp)
                 return (
-                    marshal(data, self.fields),
+                    marshal(data, self.fields, mask),
                     code,
                     headers
                 )
             else:
-                return marshal(resp, self.fields)
-
+                return marshal(resp, self.fields, mask)
         return wrapper
 
 

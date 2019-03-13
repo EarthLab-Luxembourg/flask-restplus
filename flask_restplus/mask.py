@@ -100,34 +100,19 @@ class Mask(OrderedDict):
             mask = mask[1:-1]
         return mask
 
-    def apply(self, data):
+    def apply(self, data, fields):
         '''
         Apply a fields mask to the data.
+
+        Just keeping this function to stay synced with original flask-restplus project
 
         :param data: The data or model to apply mask on
         :raises MaskError: when unable to apply the mask
 
         '''
-        from . import fields
-        # Should handle lists
-        if isinstance(data, (list, tuple, set)):
-            return [self.apply(d) for d in data]
-        elif isinstance(data, (fields.Nested, fields.List, fields.Polymorph)):
-            return data.clone(self)
-        elif type(data) == fields.Raw:
-            return fields.Raw(default=data.default, attribute=data.attribute, mask=self)
-        elif data == fields.Raw:
-            return fields.Raw(mask=self)
-        elif isinstance(data, fields.Raw) or isclass(data) and issubclass(data, fields.Raw):
-            # Not possible to apply a mask on these remaining fields types
-            raise MaskError('Mask is inconsistent with model')
-        # Should handle objects
-        elif (not isinstance(data, (dict, OrderedDict)) and hasattr(data, '__dict__')):
-            data = data.__dict__
+        return self.filter_data(data, fields)
 
-        return self.filter_data(data)
-
-    def filter_data(self, data):
+    def filter_data(self, data, fields):
         '''
         Handle the data filtering given a parsed mask
 
@@ -140,6 +125,8 @@ class Mask(OrderedDict):
         for field, content in six.iteritems(self):
             if field == '*':
                 continue
+            elif field not in fields:
+                MaskError('Mask is inconsistent with model') 
             elif isinstance(content, Mask):
                 nested = data.get(field, None)
                 if self.skip and nested is None:
@@ -166,14 +153,17 @@ class Mask(OrderedDict):
         ]))
 
 
-def apply(data, mask, skip=False):
+def apply(data, fields, mask, skip=False):
     '''
     Apply a fields mask to the data.
 
+    :param fields: Marshmallow schema or dict of marshmallow fields which will hold the model.
+        Any mask field not in given model will raise an error.
+        This allow to ensure that requested mask fields actually exist on the model
     :param data: The data or model to apply mask on
     :param str|Mask mask: the mask (parsed or not) to apply on data
     :param bool skip: If rue, missing field won't appear in result
     :raises MaskError: when unable to apply the mask
 
     '''
-    return Mask(mask, skip).apply(data)
+    return Mask(mask, skip).apply(data, fields)
