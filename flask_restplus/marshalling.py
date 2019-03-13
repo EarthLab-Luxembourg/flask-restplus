@@ -27,15 +27,7 @@ def marshal(data, fields):
     {'a': 100, 'c': None, 'd': None}
 
     """
-    schema = get_schema(fields)
-    out, errors = schema.dump(data)
-
-    # Not sure about what to do with errors, so we just log them
-    if errors and len(errors) > 0:
-        # Maybe we should raise an error ?
-        logger.error('Marshalling errors %s', ma.pprint(errors))
-
-    return out
+    return get_schema(fields).dump(data)
 
 
 class marshal_with(object):
