@@ -4,10 +4,23 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+invoke = "==0.21.0"
+flake8 = "==3.5.0"
+tox = "==2.9.1"
+readme_renderer = "==17.2"
+blinker = "*"
+mock = "==2.0.0"
+pytest = "==3.2.3"
+pytest-benchmark = "==3.1.1"
+pytest-cov = "==2.5.1"
+pytest-faker = "==2.0.0"
+pytest-flask = "==0.10.0"
+pytest-mock = "==1.6.3"
+pytest-profiling = "==1.2.11"
+pytest-sugar = "==0.9.0"
+tzlocal = "*"
 
 [packages]
-flask-restplus = {editable = true,extras = ["develop"],path = "."}
-autopep8 = "*"
 
 [requires]
 python_version = "3.5"
