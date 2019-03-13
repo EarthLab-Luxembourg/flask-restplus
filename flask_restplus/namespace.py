@@ -134,6 +134,13 @@ class Namespace(object):
         abort(*args, **kwargs)
 
     def register_schema(self, schema, name=None) -> ma.Schema:
+        '''
+        Register given marshmallow schema with the given name.
+
+        Please note that any schemas provided to the `expect_args`, `expect_kwargs`
+        or `marshal_with` are automatically registered. Use this function only if you need
+        to provide specific name to given schema
+        '''
         if not name:
             if isinstance(schema, ma.Schema):
                 schema_class = type(schema)
@@ -214,10 +221,6 @@ class Namespace(object):
         header.update(kwargs)
         return self.doc(headers={name: header})
 
-    def produces(self, mimetypes):
-        '''A decorator to specify the MIME types the API can produce'''
-        return self.doc(produces=mimetypes)
-
     def deprecated(self, func):
         '''A decorator to mark a resource or a method as deprecated'''
         return self.doc(deprecated=True)(func)
@@ -239,6 +242,18 @@ class Namespace(object):
     def payload(self):
         '''Store the input payload in the current request context'''
         return request.get_json()
+
+    def produces(self, mimetypes):
+        '''A decorator to specify the MIME types the API can produce'''
+        return self.doc(produces=mimetypes)
+
+    def security(self, security):
+        '''A decorator to specify the security schemes to use for decorated path or operation'''
+        # TODO: maybe we should also handle the security directly here
+        # Like for expect_args 
+        # @ns.security({"Api-Key": ma.fields.Str(), location="header"})
+        # Or we could also provide a way to define security schemes at api level
+        return self.doc(security=security)
 
     def expect_kwargs(self, *args, **kwargs):
         '''
@@ -285,10 +300,10 @@ class Namespace(object):
         :param args:
         :return:
         """
-        def inner(field_type):
+        def wrapper(field_type):
             self.custom_fields_mapping[field_type] = args
             return field_type
-        return inner
+        return wrapper
 
     def handle_validation_error(self, err, req, schema):
         """

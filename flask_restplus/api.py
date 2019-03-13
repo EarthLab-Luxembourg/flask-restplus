@@ -187,14 +187,16 @@ class Api(object):
         self._register_specs(self.blueprint or app)
         self._register_doc(self.blueprint or app)
 
-        app.handle_exception = partial(self.error_router, app.handle_exception)
-        app.handle_user_exception = partial(self.user_error_router, app.handle_user_exception)
+        app.handle_exception = partial(self.error_router, self.handle_error, app.handle_exception)
+        app.handle_user_exception = partial(self.error_router, self.handle_user_error, app.handle_user_exception)
 
         if len(self.resources) > 0:
             for resource, namespace, urls, kwargs in self.resources:
                 self._register_view(app, resource, namespace, *urls, **kwargs)
 
         self._register_apidoc(app)
+        app.config.setdefault('RESTPLUS_MASK_HEADER', 'X-Fields')
+        app.config.setdefault('RESTPLUS_MASK_SWAGGER', True)
 
     def __getattr__(self, name):
         try:
@@ -553,53 +555,23 @@ class Api(object):
             return False
         return self.owns_endpoint(request.url_rule.endpoint)
 
-    def error_router(self, original_handler, e):
+    def error_router(self, fr_handler, original_handler, e):
         '''
         This function decides whether the error occured in a flask-restplus
-        endpoint or not. If it happened in a flask-restplus endpoint, our
-        handler will be dispatched. If it happened in an unrelated view, the
+        endpoint or not. If it happened in a flask-restplus endpoint, given handler
+        will be dispatched. If it happened in an unrelated view, the
         app's original error handler will be dispatched.
         In the event that the error occurred in a flask-restplus endpoint but
         the local handler can't resolve the situation, the router will fall
         back onto the original_handler as last resort.
 
-        :param function original_handler: the original Flask error handler for the app
-        :param Exception e: the exception raised while handling the request
-        '''
-        return self._error_router(self.handle_error, original_handler, e)
-
-    def user_error_router(self, original_handler, e):
-        '''
-        This function decides whether the error occured in a flask-restplus
-        endpoint or not. If it happened in a flask-restplus endpoint, our
-        user handler will be dispatched. If it happened in an unrelated view, the
-        app's original user error handler will be dispatched.
-        In the event that the error occurred in a flask-restplus endpoint but
-        the local handler can't resolve the situation, the router will fall
-        back onto the original_handler as last resort.
-
-        :param function original_handler: the original Flask error handler for the app
-        :param Exception e: the exception raised while handling the request
-        '''
-        return self._error_router(self.handle_user_error, original_handler, e)
-
-    def _error_router(self, handler, original_handler, e):
-        '''
-        This function decides whether the error occured in a flask-restplus
-        endpoint or not. If it happened in a flask-restplus endpoint, given handler
-        will be dispatched. If it happened in an unrelated view, the
-        given app's original error handler will be dispatched.
-        In the event that the error occurred in a flask-restplus endpoint but
-        the local handler can't resolve the situation, the router will fall
-        back onto the original_handler as last resort.
-
-        :param function handler: the error handler to dispatch on error that occured in a flask-restplus endpoint
+        :param function fr_handler: Flask restplus error handler
         :param function original_handler: the original Flask error handler for the app
         :param Exception e: the exception raised while handling the request
         '''
         if self._has_fr_route():
             try:
-                return handler(e)
+                return fr_handler(e)
             except Exception:
                 pass  # Fall through to original handler
         return original_handler(e)
@@ -644,9 +616,7 @@ class Api(object):
                 result = self._default_error_handler(e)
                 default_data, code, headers = unpack(result, HTTPStatus.INTERNAL_SERVER_ERROR)
             else:
-                # The error looks like an unhandled one,
-                # We reraise it so the regular error_handler will handle it
-                raise e
+                raise e from e
 
         return self._make_error_response(code, default_data, e, headers)
 
