@@ -145,6 +145,7 @@ class Swagger(object):
     def __init__(self, api):
         self.api = api
         self.spec = None
+        self.marshmallow_plugin = MarshmallowPlugin()
 
     def as_dict(self):
         '''
@@ -175,9 +176,6 @@ class Swagger(object):
         paths = {}
         tags = self.extract_tags(self.api)
 
-        # register errors
-        responses = self.register_errors()
-
         for ns in self.api.namespaces:
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
@@ -190,12 +188,10 @@ class Swagger(object):
                     self.api.authorizations = {}
                 self.api.authorizations = merge(self.api.authorizations, ns.authorizations)
 
-        plugin = MarshmallowPlugin()
-
         self.spec = APISpec(
             title=_v(self.api.title),
             version=_v(self.api.version),
-            plugins=(plugin,),
+            plugins=(self.marshmallow_plugin,),
             info=infos,
             openapi_version=OPENAPI_VERSION,
             **{
@@ -204,7 +200,6 @@ class Swagger(object):
                 'consumes': ['application/json'],  
                 'securityDefinitions': self.api.authorizations or None,          
                 'security': self.security_requirements(self.api.security) or None,
-                'responses': responses or None,
                 'host': self.get_host(),
             }
         )
@@ -212,7 +207,7 @@ class Swagger(object):
         # Inject custom fields mapping of the API to the Marshmallow plugin
         # Must do this AFTER spec initialization because before that, the plugin have no spec defined
         for field_type, args in self.api.custom_fields_mapping.items():
-            plugin.map_to_openapi_type(*args)(field_type)
+            self.marshmallow_plugin.map_to_openapi_type(*args)(field_type)
 
         # Extract API tags
         for tag in tags:
@@ -227,6 +222,11 @@ class Swagger(object):
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
                     self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
+        
+        # register errors 
+        # Calls this last so we are sure that spec is initialized (required for using marshmallow plugin)
+        # And previous definitions have been registered (becauses responses can reference definitions)
+        self.spec.options['responses'] = self.register_errors() or None
 
         return self.spec.to_dict()
 
@@ -325,6 +325,8 @@ class Swagger(object):
             if 'responses' in apidoc:
                 _, model = list(apidoc['responses'].values())[0]
                 response['schema'] = model
+            # Resolve marshmallow schema to include references if needed
+            self.marshmallow_plugin.resolve_schema(response)
             responses[exception.__name__] = not_none(response)
         return responses
 

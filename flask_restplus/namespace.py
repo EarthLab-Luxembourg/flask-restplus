@@ -158,7 +158,6 @@ class Namespace(object):
 
         :param int code: Optionally give the expected HTTP response code if its different from 200
         '''
-        # TODO: allow to use with decorator for api-level error handler in order to add schema to responses
         def wrapper(func):
             doc = {
                 'responses': {
