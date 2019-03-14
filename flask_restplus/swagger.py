@@ -201,9 +201,11 @@ class Swagger(object):
             **{
                 'basePath': basepath,
                 'produces': list(iterkeys(self.api.representations)),
-                'consumes': ['application/json'],                
+                'consumes': ['application/json'],  
+                'securityDefinitions': self.api.authorizations or None,          
                 'security': self.security_requirements(self.api.security) or None,
-                'host': self.get_host()
+                'responses': responses or None,
+                'host': self.get_host(),
             }
         )
 
@@ -214,25 +216,17 @@ class Swagger(object):
 
         # Extract API tags
         for tag in tags:
-            self.spec.tag(tag)
-        
-        # Extract API security definitions
-        for name, scheme in (self.api.authorizations or {}).items():
-            self.spec.components.security_scheme(name, scheme)
-
-        # Extract API responses
-        for name, fields in responses.items():
-            self.spec.components.response(name, fields)
+            self.spec.add_tag(tag)
 
         # Extract API definitions
         for name, schema in self.api.schemas.items():
-            self.spec.components.schema(name, schema=schema)
+            self.spec.definition(name, schema=schema)
 
         # Extract API paths
         for ns in self.api.namespaces:
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
-                    self.spec.path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
+                    self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
 
         return self.spec.to_dict()
 
