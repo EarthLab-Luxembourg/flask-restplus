@@ -289,7 +289,7 @@ class Namespace(object):
             # Get the method for swagger documenting (only set schema and 'in' properties
             func = self.doc(expect={'argmap': argmap, 'location': location_})(func)
             # Decorate returned func with webargs decorator
-            return self.parser.use_args(argmap, locations=[location_], **kwargs)(func)
+            return self.parser.use_args(argmap, locations=(location_,), **kwargs)(func)
         return wrapper
 
     def map_to_openapi_type(self, *args):

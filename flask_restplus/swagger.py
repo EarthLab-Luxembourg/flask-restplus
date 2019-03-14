@@ -201,11 +201,9 @@ class Swagger(object):
             **{
                 'basePath': basepath,
                 'produces': list(iterkeys(self.api.representations)),
-                'consumes': ['application/json'],
-                'securityDefinitions': self.api.authorizations or None,
+                'consumes': ['application/json'],                
                 'security': self.security_requirements(self.api.security) or None,
-                'host': self.get_host(),
-                'responses': responses,
+                'host': self.get_host()
             }
         )
 
@@ -217,6 +215,14 @@ class Swagger(object):
         # Extract API tags
         for tag in tags:
             self.spec.tag(tag)
+        
+        # Extract API security definitions
+        for name, scheme in (self.api.authorizations or {}).items():
+            self.spec.components.security_scheme(name, scheme)
+
+        # Extract API responses
+        for name, fields in responses.items():
+            self.spec.components.response(name, fields)
 
         # Extract API definitions
         for name, schema in self.api.schemas.items():
