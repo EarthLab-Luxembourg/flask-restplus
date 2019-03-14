@@ -251,11 +251,7 @@ class Namespace(object):
 
     def security(self, security):
         '''A decorator to specify the security schemes to use for decorated path or operation'''
-        # TODO: maybe we should also handle the security directly here
-        # Like for expect_args 
-        # @ns.security({"Api-Key": ma.fields.Str(), location="header"})
-        # Or we could also provide a way to define security schemes at api level
-        return self.doc(security=security)
+        return self.doc(security=security)           
 
     def expect_kwargs(self, *args, **kwargs):
         '''
