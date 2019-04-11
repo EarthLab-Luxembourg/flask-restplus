@@ -204,7 +204,7 @@ class Swagger(object):
         )
 
         for component_id, component in iteritems(self.api.authorizations or {}):
-            self.api.components.security_scheme(component_id, component)
+            self.spec.components.security_scheme(component_id, component)
 
         # Inject custom fields mapping of the API to the Marshmallow plugin
         # Must do this AFTER spec initialization because before that, the plugin have no spec defined
