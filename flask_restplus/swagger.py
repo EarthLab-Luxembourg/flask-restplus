@@ -197,12 +197,14 @@ class Swagger(object):
             **{
                 'basePath': basepath,
                 'produces': list(iterkeys(self.api.representations)),
-                'consumes': ['application/json'],  
-                'securityDefinitions': self.api.authorizations or None,          
+                'consumes': ['application/json'],                  
                 'security': self.security_requirements(self.api.security) or None,
                 'host': self.get_host(),
             }
         )
+
+        for component_id, component in iteritems(self.api.authorizations or {}):
+            self.api.components.security_scheme(component_id, component)
 
         # Inject custom fields mapping of the API to the Marshmallow plugin
         # Must do this AFTER spec initialization because before that, the plugin have no spec defined
@@ -211,22 +213,23 @@ class Swagger(object):
 
         # Extract API tags
         for tag in tags:
-            self.spec.add_tag(tag)
+            self.spec.tag(tag)
 
         # Extract API definitions
         for name, schema in self.api.schemas.items():
-            self.spec.definition(name, schema=schema)
+            self.spec.components.schema(name, schema=schema)
 
         # Extract API paths
         for ns in self.api.namespaces:
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
-                    self.spec.add_path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
+                    self.spec.path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
         
         # register errors 
         # Calls this last so we are sure that spec is initialized (required for using marshmallow plugin)
         # And previous definitions have been registered (becauses responses can reference definitions)
-        self.spec.options['responses'] = self.register_errors() or None
+        for name, component in iteritems(self.register_errors() or {}):
+            self.spec.components.response(name, component)
 
         return self.spec.to_dict()
 
