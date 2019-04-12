@@ -203,6 +203,7 @@ class Swagger(object):
             }
         )
 
+
         for component_id, component in iteritems(self.api.authorizations or {}):
             self.spec.components.security_scheme(component_id, component)
 
@@ -211,15 +212,12 @@ class Swagger(object):
         for field_type, args in self.api.custom_fields_mapping.items():
             self.marshmallow_plugin.map_to_openapi_type(*args)(field_type)
 
-        # Extract API tags
         for tag in tags:
             self.spec.tag(tag)
 
-        # Extract API definitions
         for name, schema in self.api.schemas.items():
             self.spec.components.schema(name, schema=schema)
 
-        # Extract API paths
         for ns in self.api.namespaces:
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
