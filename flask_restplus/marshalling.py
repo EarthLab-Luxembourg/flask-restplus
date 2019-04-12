@@ -14,7 +14,7 @@ from .utils import unpack, get_schema
 logger = logging.getLogger(__name__)
 
 
-def marshal(data, fields, mask=None):
+def marshal(data, fields, many=False, mask=None):
     """Takes raw data (in the form of a dict, list, object) and a dict of
     fields to output and filters the data based on those fields.
 
@@ -30,7 +30,7 @@ def marshal(data, fields, mask=None):
     {'a': 100, 'c': None, 'd': None}
 
     """
-    out = get_schema(fields).dump(data)
+    out = get_schema(fields).dump(data, many=many)
     if mask:
       out = apply_mask(out, fields, mask)
     return out

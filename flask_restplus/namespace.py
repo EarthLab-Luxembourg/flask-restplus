@@ -12,7 +12,7 @@ from webargs.flaskparser import FlaskParser, abort as wa_abort
 
 from .errors import abort
 from .marshalling import marshal, marshal_with
-from .utils import merge
+from .utils import merge, merge_schema_params
 from ._http import HTTPStatus
 
 
@@ -135,40 +135,56 @@ class Namespace(object):
         '''
         abort(*args, **kwargs)
 
-    def register_schema(self, schema, name=None) -> ma.Schema:
+    def register_schema(self, schema, name=None, **kwargs) -> ma.Schema:
         '''
         Register given marshmallow schema with the given name.
 
         Please note that any schemas provided to the `expect_args`, `expect_kwargs`
         or `marshal_with` are automatically registered. Use this function only if you need
-        to provide specific name to given schema
+        to provide specific name to given schema.
+
+        You can also provide 
         '''
+        if isinstance(schema, ma.Schema):
+            schema_class = type(schema)
+        elif isinstance(schema, type) and issubclass(schema, ma.Schema):
+            schema_class = schema
+            schema = None
+
         if not name:
-            if isinstance(schema, ma.Schema):
-                schema_class = type(schema)
-            else:
-                schema_class = schema
             name = schema_class.__name__
+
+        if len(kwargs) > 0:
+            if schema:
+                kwargs = merge_schema_params(schema, kwargs)
+            schema = schema_class(**kwargs)
+
         self.schemas[name] = schema
         for api in self.apis:
             api.schemas[name] = schema
         return schema
 
-    def marshal_with(self, fields, code=HTTPStatus.OK, description=None):
+    def marshal_with(self, fields, as_list=False, code=HTTPStatus.OK, description=None):
         '''
         A decorator specifying the fields to use for serialization.
 
+        :param bool as_list: Indicate that the return type is a list
         :param int code: Optionally give the expected HTTP response code if its different from 200
         '''
         def wrapper(func):
+
             doc = {
                 'responses': {
-                    code: (description, fields)
+                    code: (description, [fields]) if as_list else (description, fields)
                 }
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
-            return marshal_with(fields)(func)
+            return marshal_with(fields, many=as_list)(func)
         return wrapper
+
+    def marshal_list_with(self, fields, **kwargs):
+        '''A shortcut decorator for :meth:`~Api.marshal_with` with ``as_list=True``'''
+        return self.marshal_with(fields, True, **kwargs)
 
     def marshal(self, *args, **kwargs):
         '''A shortcut to the :func:`marshal` helper'''
@@ -252,7 +268,7 @@ class Namespace(object):
 
     def security(self, security):
         '''A decorator to specify the security schemes to use for decorated path or operation'''
-        return self.doc(security=security)           
+        return self.doc(security=security)
 
     def expect_kwargs(self, *args, **kwargs):
         '''

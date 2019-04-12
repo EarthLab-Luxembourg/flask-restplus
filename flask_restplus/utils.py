@@ -124,12 +124,41 @@ def get_schema(argmap, req=None):
 
     :return: Marshmallow schema instance
     """
+    if callable(argmap):
+        argmap = argmap(req)
+
     if isinstance(argmap, ma.Schema):
         schema = argmap
     elif isinstance(argmap, type) and issubclass(argmap, ma.Schema):
         schema = argmap()
-    elif callable(argmap):
-        schema = argmap(req)
     else:
         schema = argmap2schema(argmap)()
     return schema
+
+
+def merge_schema_params(schema, **kwargs):
+    """Extend a marshmallow schema intance with given keyword arguments.
+
+    This function can be used to extend an already instantiated schema.
+    For example:
+    
+    ```
+    schema = MySchema(dump_only=('a', 'b'), many=True, exclude=('e',))
+    schema_extended = extend_schema(schema, dump_only=('c',), many=False, context="context")
+    ```
+
+    `schema` will got `dump_only=('a', 'b', 'c'), many=False, context="context", exclude=('e',))
+    """
+    merged = kwargs.copy()
+
+    for attr in ['many', 'context', 'partial', 'unknown']:
+        merged.setdefault(attr, getattr(schema, attr, None))
+
+    for attr in ['only', 'exclude', 'load_only', 'dump_only']:
+        value = getattr(schema, attr, None)
+        if attr not in kwargs:
+            merged[attr] = value
+        else:
+            # Merge values
+            merged[attr] = tuple(kwargs[attr]) + tuple(value)
+    return merged

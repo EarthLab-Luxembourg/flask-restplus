@@ -424,7 +424,8 @@ class Swagger(object):
 
         for expected in doc.get('expect', []):
             if 'argmap' in expected:
-                expected['schema'] = get_schema(expected.pop('argmap'))
+                if expected['']
+                expected['schema'] = expected.pop('argmap')
             expected['in'] = LOCATIONS[expected.pop('location')]
 
             params.append(expected)
@@ -455,13 +456,13 @@ class Swagger(object):
                     else:
                         responses[code] = {'description': description}
                     if model:
-                        responses[code]['schema'] = model
+                        responses[code]['schema'] = self.serialize_schema(model)
                     self.process_headers(responses[code], doc, method, kwargs.get('headers'))
             if 'model' in d:
                 code = str(d.get('default_code', HTTPStatus.OK))
                 if code not in responses:
                     responses[code] = self.process_headers(DEFAULT_RESPONSE.copy(), doc, method)
-                responses[code]['schema'] = d['model']
+                responses[code]['schema'] = self.serialize_schema(d['model'])
 
             if 'docstring' in d:
                 for name, description in iteritems(d['docstring']['raises']):
@@ -488,6 +489,16 @@ class Swagger(object):
                 )
             )
         return response
+
+    def serialize_schema(self, model):
+        if isinstance(model, (list, tuple)):
+            model = model[0]
+            return {
+                'type': 'array',
+                'items': model,
+            }
+
+        return model
 
     def security_for(self, doc, method):
         security = None
