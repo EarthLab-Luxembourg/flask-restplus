@@ -424,7 +424,6 @@ class Swagger(object):
 
         for expected in doc.get('expect', []):
             if 'argmap' in expected:
-                if expected['']
                 expected['schema'] = expected.pop('argmap')
             expected['in'] = LOCATIONS[expected.pop('location')]
 
