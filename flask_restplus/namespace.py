@@ -156,7 +156,7 @@ class Namespace(object):
 
         if len(kwargs) > 0:
             if schema:
-                kwargs = merge_schema_params(schema, kwargs)
+                kwargs = merge_schema_params(schema, **kwargs)
             schema = schema_class(**kwargs)
 
         self.schemas[name] = schema
