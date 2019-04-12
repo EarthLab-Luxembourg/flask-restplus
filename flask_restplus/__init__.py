@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
-from . import apidoc, cors
+from . import apidoc, cors, validate
 from .__about__ import __version__, __description__
 from .api import Api  # noqa
 from .errors import abort, RestError, SpecsError, ValidationError
@@ -25,5 +25,6 @@ __all__ = (
     'RestError',
     'SpecsError',
     'Swagger',
-    'ValidationError'
+    'validate'
+    'ValidationError',
 )
