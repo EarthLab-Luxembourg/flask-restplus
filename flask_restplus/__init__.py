@@ -25,6 +25,6 @@ __all__ = (
     'RestError',
     'SpecsError',
     'Swagger',
-    'validate'
+    'validate',
     'ValidationError',
 )

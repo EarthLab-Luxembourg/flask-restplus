@@ -142,8 +142,6 @@ class Namespace(object):
         Please note that any schemas provided to the `expect_args`, `expect_kwargs`
         or `marshal_with` are automatically registered. Use this function only if you need
         to provide specific name to given schema.
-
-        You can also provide 
         '''
         if isinstance(schema, ma.Schema):
             schema_class = type(schema)
@@ -154,17 +152,16 @@ class Namespace(object):
         if not name:
             name = schema_class.__name__
 
-        if len(kwargs) > 0:
-            if schema:
-                kwargs = merge_schema_params(schema, **kwargs)
-            schema = schema_class(**kwargs)
+        if schema:
+            kwargs = merge_schema_params(schema, **kwargs)
+        schema = schema_class(**kwargs)
 
         self.schemas[name] = schema
         for api in self.apis:
             api.schemas[name] = schema
         return schema
 
-    def marshal_with(self, fields, as_list=False, code=HTTPStatus.OK, description=None):
+    def marshal_with(self, fields, code=HTTPStatus.OK, description=None, as_list=False, ):
         '''
         A decorator specifying the fields to use for serialization.
 
@@ -184,7 +181,7 @@ class Namespace(object):
 
     def marshal_list_with(self, fields, **kwargs):
         '''A shortcut decorator for :meth:`~Api.marshal_with` with ``as_list=True``'''
-        return self.marshal_with(fields, True, **kwargs)
+        return self.marshal_with(fields, as_list=True, **kwargs)
 
     def marshal(self, *args, **kwargs):
         '''A shortcut to the :func:`marshal` helper'''
