@@ -324,8 +324,9 @@ class Swagger(object):
             apidoc = getattr(handler, '__apidoc__', {})
             self.process_headers(response, apidoc)
             if 'responses' in apidoc:
+                print(apidoc['responses'])
                 _, model = list(apidoc['responses'].values())[0]
-                response['schema'] = model
+                response['schema'] = get_schema(model)
             # Resolve marshmallow schema to include references if needed
             self.marshmallow_plugin.resolve_schema(response)
             responses[exception.__name__] = not_none(response)
