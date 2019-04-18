@@ -161,7 +161,7 @@ class Namespace(object):
             api.schemas[name] = schema
         return schema
 
-    def marshal_with(self, fields, code=HTTPStatus.OK, description=None, as_list=False, ):
+    def marshal_with(self, fields, code=HTTPStatus.OK, description=None, as_list=None):
         '''
         A decorator specifying the fields to use for serialization.
 
