@@ -37,7 +37,7 @@ from ._http import HTTPStatus
 
 RE_RULES = re.compile('(<.*>)')
 
-# TODO: restore Mask 
+# TODO: restore Mask
 
 # List headers that should never be handled by Flask-RESTPlus
 HEADERS_BLACKLIST = ('Content-Length',)
@@ -178,7 +178,7 @@ class Api(object):
         else:
             self.blueprint = app
 
-    def _init_app(self, app):
+    def _init_app(self, app, url_prefix=None):
         '''
         Perform initialization actions with the given :class:`flask.Flask` object.
 
@@ -194,7 +194,7 @@ class Api(object):
             for resource, namespace, urls, kwargs in self.resources:
                 self._register_view(app, resource, namespace, *urls, **kwargs)
 
-        self._register_apidoc(app)
+        self._register_apidoc(app, url_prefix=url_prefix)
         app.config.setdefault('RESTPLUS_MASK_HEADER', 'X-Fields')
         app.config.setdefault('RESTPLUS_MASK_SWAGGER', True)
 
@@ -216,10 +216,12 @@ class Api(object):
         parts = (registration_prefix, self.prefix, url_part)
         return ''.join(part for part in parts if part)
 
-    def _register_apidoc(self, app):
+    def _register_apidoc(self, app, url_prefix=None):
         conf = app.extensions.setdefault('restplus', {})
         if not conf.get('apidoc_registered', False):
-            app.register_blueprint(apidoc.apidoc)
+            if not url_prefix and self.blueprint:
+                url_prefix = self.blueprint.url_prefix
+            app.register_blueprint(apidoc.apidoc, url_prefix=url_prefix)
         conf['apidoc_registered'] = True
 
     def _register_specs(self, app_or_blueprint):
@@ -747,7 +749,7 @@ class Api(object):
                                                   setup_state)
         if not setup_state.first_registration:
             raise ValueError('flask-restplus blueprints can only be registered once.')
-        self._init_app(setup_state.app)
+        self._init_app(setup_state.app, url_prefix=setup_state.url_prefix)
 
     def mediatypes_method(self):
         '''Return a method that returns a list of mediatypes'''
