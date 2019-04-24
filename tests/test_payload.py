@@ -79,7 +79,8 @@ class PayloadTest(object):
             def post(self):
                 return {}
 
-        self.assert_errors(client, '/validation/', {}, 'name')
+        data = client.post_json('/validation/', {})
+        assert data == {}
 
     def test_validation_false_in_config(self, app, client):
         app.config['RESTPLUS_VALIDATE'] = False
