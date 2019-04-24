@@ -27,6 +27,7 @@ from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAc
 from werkzeug.wrappers import BaseResponse
 
 from . import apidoc
+from .mask import ParseError, MaskError
 from .namespace import Namespace
 from .postman import PostmanCollectionV1
 from .resource import Resource
@@ -37,7 +38,6 @@ from ._http import HTTPStatus
 
 RE_RULES = re.compile('(<.*>)')
 
-# TODO: restore Mask 
 
 # List headers that should never be handled by Flask-RESTPlus
 HEADERS_BLACKLIST = ('Content-Length',)
@@ -109,7 +109,10 @@ class Api(object):
         self._default_error_handler = None
         self.tags = tags or []
 
-        self.error_handlers = {}
+        self.error_handlers = {
+            ParseError: mask_parse_error_handler,
+            MaskError: mask_error_handler,
+        }
         self._schema = None
         self.schemas = {}
         # self._refresolver = None
@@ -178,7 +181,7 @@ class Api(object):
         else:
             self.blueprint = app
 
-    def _init_app(self, app):
+    def _init_app(self, app, url_prefix=None):
         '''
         Perform initialization actions with the given :class:`flask.Flask` object.
 
@@ -194,7 +197,7 @@ class Api(object):
             for resource, namespace, urls, kwargs in self.resources:
                 self._register_view(app, resource, namespace, *urls, **kwargs)
 
-        self._register_apidoc(app)
+        self._register_apidoc(app, url_prefix=url_prefix)
         app.config.setdefault('RESTPLUS_MASK_HEADER', 'X-Fields')
         app.config.setdefault('RESTPLUS_MASK_SWAGGER', True)
 
@@ -216,10 +219,12 @@ class Api(object):
         parts = (registration_prefix, self.prefix, url_part)
         return ''.join(part for part in parts if part)
 
-    def _register_apidoc(self, app):
+    def _register_apidoc(self, app, url_prefix=None):
         conf = app.extensions.setdefault('restplus', {})
         if not conf.get('apidoc_registered', False):
-            app.register_blueprint(apidoc.apidoc)
+            if not url_prefix and self.blueprint:
+                url_prefix = self.blueprint.url_prefix
+            app.register_blueprint(apidoc.apidoc, url_prefix=url_prefix)
         conf['apidoc_registered'] = True
 
     def _register_specs(self, app_or_blueprint):
@@ -747,7 +752,7 @@ class Api(object):
                                                   setup_state)
         if not setup_state.first_registration:
             raise ValueError('flask-restplus blueprints can only be registered once.')
-        self._init_app(setup_state.app)
+        self._init_app(setup_state.app, url_prefix=setup_state.url_prefix)
 
     def mediatypes_method(self):
         '''Return a method that returns a list of mediatypes'''
@@ -852,3 +857,13 @@ class SwaggerView(Resource):
 
     def mediatypes(self):
         return ['application/json']
+
+
+def mask_parse_error_handler(error):
+    '''When a mask can't be parsed'''
+    return {'message': 'Mask parse error: {0}'.format(error)}, HTTPStatus.BAD_REQUEST
+
+
+def mask_error_handler(error):
+    '''When any error occurs on mask'''
+    return {'message': 'Mask error: {0}'.format(error)}, HTTPStatus.BAD_REQUEST

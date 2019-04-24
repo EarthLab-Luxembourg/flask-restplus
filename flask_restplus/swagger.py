@@ -197,7 +197,7 @@ class Swagger(object):
             **{
                 'basePath': basepath,
                 'produces': list(iterkeys(self.api.representations)),
-                'consumes': ['application/json'],                  
+                'consumes': ['application/json'],
                 'security': self.security_requirements(self.api.security) or None,
                 'host': self.get_host(),
             }
@@ -222,8 +222,8 @@ class Swagger(object):
             for resource, urls, kwargs in ns.resources:
                 for url in self.api.ns_urls(ns, urls):
                     self.spec.path(extract_path(url), self.serialize_resource(ns, resource, url, kwargs))
-        
-        # register errors 
+
+        # register errors
         # Calls this last so we are sure that spec is initialized (required for using marshmallow plugin)
         # And previous definitions have been registered (becauses responses can reference definitions)
         for name, component in iteritems(self.register_errors() or {}):
@@ -324,8 +324,9 @@ class Swagger(object):
             apidoc = getattr(handler, '__apidoc__', {})
             self.process_headers(response, apidoc)
             if 'responses' in apidoc:
+                print(apidoc['responses'])
                 _, model = list(apidoc['responses'].values())[0]
-                response['schema'] = model
+                response['schema'] = get_schema(model)
             # Resolve marshmallow schema to include references if needed
             self.marshmallow_plugin.resolve_schema(response)
             responses[exception.__name__] = not_none(response)
@@ -419,6 +420,21 @@ class Swagger(object):
                     param['type'] = PY_TYPES[ptype]
 
             params.append(param)
+
+        # Handle fields mask
+        mask = doc.get('__mask__')
+        if (mask and current_app.config['RESTPLUS_MASK_SWAGGER']):
+            param = {
+                'name': current_app.config['RESTPLUS_MASK_HEADER'],
+                'in': 'header',
+                'type': 'string',
+                'format': 'mask',
+                'description': 'An optional fields mask',
+            }
+            if isinstance(mask, string_types):
+                param['default'] = mask
+            params.append(param)
+
 
         for expected in doc.get('expect', []):
             if 'argmap' in expected:

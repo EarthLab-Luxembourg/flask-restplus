@@ -12,7 +12,7 @@ from webargs.flaskparser import FlaskParser, abort as wa_abort
 
 from .errors import abort
 from .marshalling import marshal, marshal_with
-from .utils import merge, merge_schema_params
+from .utils import merge, extend_schema
 from ._http import HTTPStatus
 
 
@@ -145,23 +145,24 @@ class Namespace(object):
         '''
         if isinstance(schema, ma.Schema):
             schema_class = type(schema)
+            if kwargs:
+                schema = extend_schema(schema, **kwargs)
         elif isinstance(schema, type) and issubclass(schema, ma.Schema):
             schema_class = schema
-            schema = None
+            if kwargs:
+                # Create a schema instance only if we provided some keyword arguments.
+                # However, we can directly register the schema (which will be the scheam class actually)
+                schema = schema_class(**kwargs)
 
         if not name:
             name = schema_class.__name__
-
-        if schema:
-            kwargs = merge_schema_params(schema, **kwargs)
-        schema = schema_class(**kwargs)
 
         self.schemas[name] = schema
         for api in self.apis:
             api.schemas[name] = schema
         return schema
 
-    def marshal_with(self, fields, code=HTTPStatus.OK, description=None, as_list=False, ):
+    def marshal_with(self, fields, code=HTTPStatus.OK, description=None, as_list=None):
         '''
         A decorator specifying the fields to use for serialization.
 
@@ -173,7 +174,8 @@ class Namespace(object):
             doc = {
                 'responses': {
                     code: (description, [fields]) if as_list else (description, fields)
-                }
+                },
+                '__mask__': True # Mask values can't be determined outside app context
             }
             func.__apidoc__ = merge(getattr(func, '__apidoc__', {}), doc)
             return marshal_with(fields, many=as_list)(func)
@@ -281,9 +283,9 @@ class Namespace(object):
             of argname -> `marshmallow.fields.Field` pairs, or a callable
             which accepts a request and returns a `marshmallow.Schema`.
         :param str location: Where to search for args. Defaults to 'json'. Please note that each field
-            in `argmap` can provide a specific `location` property. 
+            in `argmap` can provide a specific `location` property.
             See https://webargs.readthedocs.io/en/latest/quickstart.html#request-locations
-        :param kwargs: Additional keyword arguments passed directly to webargs `use_args` function. 
+        :param kwargs: Additional keyword arguments passed directly to webargs `use_args` function.
             Please note however that `locations` argument can not be passed
         '''
         def wrapper(func):

@@ -136,12 +136,12 @@ def get_schema(argmap, req=None):
     return schema
 
 
-def merge_schema_params(schema, **kwargs):
+def merge_schema_attrs(schema, **kwargs):
     """Extend a marshmallow schema intance with given keyword arguments.
 
     This function can be used to extend an already instantiated schema.
     For example:
-    
+
     ```
     schema = MySchema(dump_only=('a', 'b'), many=True, exclude=('e',))
     schema_extended = extend_schema(schema, dump_only=('c',), many=False, context="context")
@@ -149,16 +149,37 @@ def merge_schema_params(schema, **kwargs):
 
     `schema` will got `dump_only=('a', 'b', 'c'), many=False, context="context", exclude=('e',))
     """
-    merged = kwargs.copy()
+    result = {}
 
     for attr in ['many', 'context', 'partial', 'unknown']:
-        merged.setdefault(attr, getattr(schema, attr, None))
+        if attr in kwargs:
+            # Use provided value
+            value = kwargs[attr]
+        else:
+            # Use provided schema attribute value
+            value = getattr(schema, attr, None)
+        result[attr] = value
 
     for attr in ['only', 'exclude', 'load_only', 'dump_only']:
         value = getattr(schema, attr, None)
-        if attr not in kwargs:
-            merged[attr] = value
-        else:
+        if attr in kwargs and kwargs[attr] is not None:
             # Merge values
-            merged[attr] = tuple(kwargs[attr]) + tuple(value)
-    return merged
+            value = tuple(kwargs[attr]) + tuple(value or [])
+        result[attr] = value
+    return result
+
+def extend_schema(schema, **kwargs):
+    """Creates a new schema instance using given instance and arguments
+
+    Creates a new marshmallow schema instance using given instance attributes merged with given ones
+    as keyword arguments.
+    It is particularly useful when you want to create a new schema instance with some more `only` or `exclude` attributes
+    for example.
+
+    :param schema: Marshmallow schema instance
+    :param kwargs: Marshmallow schema constructor arguments
+    :return: A new marshmallow schema instance combining attributes from given instance and provided ones
+    """
+    schema_class = type(schema)
+    kwargs = merge_schema_attrs(schema, **kwargs)
+    return schema_class(**kwargs)
