@@ -38,7 +38,6 @@ from ._http import HTTPStatus
 
 RE_RULES = re.compile('(<.*>)')
 
-# TODO: restore Mask
 
 # List headers that should never be handled by Flask-RESTPlus
 HEADERS_BLACKLIST = ('Content-Length',)
