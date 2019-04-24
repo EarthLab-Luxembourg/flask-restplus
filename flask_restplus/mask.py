@@ -5,6 +5,7 @@ import logging
 import re
 import six
 
+import marshmallow as ma
 from collections import OrderedDict
 from inspect import isclass
 
@@ -100,7 +101,7 @@ class Mask(OrderedDict):
             mask = mask[1:-1]
         return mask
 
-    def apply(self, data, fields):
+    def apply(self, data):
         '''
         Apply a fields mask to the data.
 
@@ -111,7 +112,7 @@ class Mask(OrderedDict):
 
         '''
         if isinstance(data, (list, tuple, set)):
-            return [self.apply(d, fields) for d in data]
+            return [self.apply(d) for d in data]
         # elif isinstance(data, (fields.Nested, fields.List, fields.Polymorph)):
         #     return data.clone(self)
         # elif type(data) == fields.Raw:
@@ -125,10 +126,10 @@ class Mask(OrderedDict):
         # elif (not isinstance(data, (dict, OrderedDict)) and hasattr(data, '__dict__')):
         #     data = data.__dict__
 
-        return self.filter_data(data, fields)
+        return self.filter_data(data)
 
 
-    def filter_data(self, data, fields):
+    def filter_data(self, data):
         '''
         Handle the data filtering given a parsed mask
 
@@ -141,8 +142,6 @@ class Mask(OrderedDict):
         for field, content in six.iteritems(self):
             if field == '*':
                 continue
-            elif field not in fields:
-                MaskError('Mask is inconsistent with model')
             elif isinstance(content, Mask):
                 nested = data.get(field, None)
                 if self.skip and nested is None:
@@ -169,7 +168,7 @@ class Mask(OrderedDict):
         ]))
 
 
-def apply(data, fields, mask, skip=False):
+def apply(data, mask, skip=False):
     '''
     Apply a fields mask to the data.
 
@@ -182,4 +181,4 @@ def apply(data, fields, mask, skip=False):
     :raises MaskError: when unable to apply the mask
 
     '''
-    return Mask(mask, skip).apply(data, fields)
+    return Mask(mask, skip).apply(data)

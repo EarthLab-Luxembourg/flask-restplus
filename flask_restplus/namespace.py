@@ -12,7 +12,7 @@ from webargs.flaskparser import FlaskParser, abort as wa_abort
 
 from .errors import abort
 from .marshalling import marshal, marshal_with
-from .utils import merge, merge_schema_params
+from .utils import merge, extend_schema
 from ._http import HTTPStatus
 
 
@@ -145,16 +145,17 @@ class Namespace(object):
         '''
         if isinstance(schema, ma.Schema):
             schema_class = type(schema)
+            if kwargs:
+                schema = extend_schema(schema, **kwargs)
         elif isinstance(schema, type) and issubclass(schema, ma.Schema):
             schema_class = schema
-            schema = None
+            if kwargs:
+                # Create a schema instance only if we provided some keyword arguments.
+                # However, we can directly register the schema (which will be the scheam class actually)
+                schema = schema_class(**kwargs)
 
         if not name:
             name = schema_class.__name__
-
-        if schema:
-            kwargs = merge_schema_params(schema, **kwargs)
-        schema = schema_class(**kwargs)
 
         self.schemas[name] = schema
         for api in self.apis:

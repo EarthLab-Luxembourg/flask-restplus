@@ -27,6 +27,7 @@ from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound, NotAc
 from werkzeug.wrappers import BaseResponse
 
 from . import apidoc
+from .mask import ParseError, MaskError
 from .namespace import Namespace
 from .postman import PostmanCollectionV1
 from .resource import Resource
@@ -109,7 +110,10 @@ class Api(object):
         self._default_error_handler = None
         self.tags = tags or []
 
-        self.error_handlers = {}
+        self.error_handlers = {
+            ParseError: mask_parse_error_handler,
+            MaskError: mask_error_handler,
+        }
         self._schema = None
         self.schemas = {}
         # self._refresolver = None
@@ -854,3 +858,13 @@ class SwaggerView(Resource):
 
     def mediatypes(self):
         return ['application/json']
+
+
+def mask_parse_error_handler(error):
+    '''When a mask can't be parsed'''
+    return {'message': 'Mask parse error: {0}'.format(error)}, HTTPStatus.BAD_REQUEST
+
+
+def mask_error_handler(error):
+    '''When any error occurs on mask'''
+    return {'message': 'Mask error: {0}'.format(error)}, HTTPStatus.BAD_REQUEST

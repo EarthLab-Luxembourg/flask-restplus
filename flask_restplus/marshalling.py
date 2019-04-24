@@ -33,7 +33,7 @@ def marshal(data, fields, many=None, mask=None):
     schema = get_schema(fields)
     out = schema.dump(data, many=many)
     if mask:
-      out = apply_mask(out, schema.fields, mask)
+      out = apply_mask(out, mask)
     return out
 
 
