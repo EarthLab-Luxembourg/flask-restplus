@@ -110,7 +110,23 @@ class Mask(OrderedDict):
         :raises MaskError: when unable to apply the mask
 
         '''
+        if isinstance(data, (list, tuple, set)):
+            return [self.apply(d, fields) for d in data]
+        # elif isinstance(data, (fields.Nested, fields.List, fields.Polymorph)):
+        #     return data.clone(self)
+        # elif type(data) == fields.Raw:
+        #     return fields.Raw(default=data.default, attribute=data.attribute, mask=self)
+        # elif data == fields.Raw:
+        #     return fields.Raw(mask=self)
+        # elif isinstance(data, fields.Raw) or isclass(data) and issubclass(data, fields.Raw):
+        #     # Not possible to apply a mask on these remaining fields types
+        #     raise MaskError('Mask is inconsistent with model')
+        # # Should handle objects
+        # elif (not isinstance(data, (dict, OrderedDict)) and hasattr(data, '__dict__')):
+        #     data = data.__dict__
+
         return self.filter_data(data, fields)
+
 
     def filter_data(self, data, fields):
         '''
@@ -126,7 +142,7 @@ class Mask(OrderedDict):
             if field == '*':
                 continue
             elif field not in fields:
-                MaskError('Mask is inconsistent with model') 
+                MaskError('Mask is inconsistent with model')
             elif isinstance(content, Mask):
                 nested = data.get(field, None)
                 if self.skip and nested is None:

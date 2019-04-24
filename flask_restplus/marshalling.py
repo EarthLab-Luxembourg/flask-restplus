@@ -30,9 +30,10 @@ def marshal(data, fields, many=None, mask=None):
     {'a': 100, 'c': None, 'd': None}
 
     """
-    out = get_schema(fields).dump(data, many=many)
+    schema = get_schema(fields)
+    out = schema.dump(data, many=many)
     if mask:
-      out = apply_mask(out, fields, mask)
+      out = apply_mask(out, schema.fields, mask)
     return out
 
 
