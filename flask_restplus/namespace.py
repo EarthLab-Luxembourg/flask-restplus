@@ -261,14 +261,6 @@ class Namespace(object):
         '''Store the input payload in the current request context'''
         return request.get_json()
 
-    def produces(self, mimetypes):
-        '''A decorator to specify the MIME types the API can produce'''
-        return self.doc(produces=mimetypes)
-
-    def security(self, security):
-        '''A decorator to specify the security schemes to use for decorated path or operation'''
-        return self.doc(security=security)
-
     def expect_kwargs(self, *args, **kwargs):
         '''
         A decorator to specify expected inputs.

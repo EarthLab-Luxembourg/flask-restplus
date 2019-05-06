@@ -4,9 +4,13 @@ from __future__ import unicode_literals, absolute_import
 import itertools
 import re
 
-from inspect import getdoc
-from collections import OrderedDict, Hashable
-from six import string_types, iteritems, iterkeys
+from inspect import isclass, getdoc
+from collections import OrderedDict
+try:
+    from collections.abc import Hashable
+except ImportError:
+    from collections import Hashable
+from six import string_types, itervalues, iteritems, iterkeys
 
 from flask import current_app
 from werkzeug.routing import parse_rule
@@ -137,6 +141,14 @@ def parse_docstring(obj):
     return parsed
 
 
+def is_hidden(resource):
+    '''
+    Determine whether a Resource has been hidden from Swagger documentation
+    i.e. by using Api.doc(False) decorator
+    '''
+    return hasattr(resource, "__apidoc__") and resource.__apidoc__ is False
+
+
 class Swagger(object):
     '''
     A Swagger documentation wrapper for an API instance.
@@ -252,7 +264,12 @@ class Swagger(object):
             tags.append(tag)
             by_name[tag['name']] = tag
         for ns in api.namespaces:
+            # hide namespaces without any Resources
             if not ns.resources:
+                continue
+            # hide namespaces with all Resources hidden from Swagger documentation
+            resources = (resource for resource, urls, kwargs in ns.resources)
+            if all(is_hidden(r) for r in resources):
                 continue
             if ns.name not in by_name:
                 tags.append({

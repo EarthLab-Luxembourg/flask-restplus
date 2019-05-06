@@ -569,7 +569,6 @@ class Api(object):
         In the event that the error occurred in a flask-restplus endpoint but
         the local handler can't resolve the situation, the router will fall
         back onto the original_handler as last resort.
-
         :param function fr_handler: Flask restplus error handler
         :param function original_handler: the original Flask error handler for the app
         :param Exception e: the exception raised while handling the request
@@ -585,9 +584,7 @@ class Api(object):
         '''
         Internal server Error handler for the API transforms an unknown raised exception into a Flask response,
         with the appropriate HTTP status code and body.
-
         :param Exception e: the raised Exception object
-
         '''
         code = HTTPStatus.INTERNAL_SERVER_ERROR
         return self._make_error_response(code, {'message': code.phrase}, e, Headers())
@@ -601,6 +598,15 @@ class Api(object):
 
         '''
         got_request_exception.send(current_app._get_current_object(), exception=e)
+
+        if not isinstance(e, HTTPException) and current_app.propagate_exceptions:
+            exc_type, exc_value, tb = sys.exc_info()
+            if exc_value is e:
+                raise
+            else:
+                raise e
+
+        include_message_in_response = current_app.config.get("ERROR_INCLUDE_MESSAGE", True)
         default_data = {}
 
         headers = Headers()
