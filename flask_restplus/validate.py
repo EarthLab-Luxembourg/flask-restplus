@@ -17,20 +17,20 @@ class RangeStrict(ma.validate.Range):
         self.max_strict = max_strict
 
     def _get_message(self):
-        if self.min and self.max:
+        if self.min is not None and self.max is not None:
             # If both values are supplied
             if self.min_strict and self.max_strict:
                 return self.message_all_strict
             elif self.min_strict:
                 return self.message_all_min_strict
-            elif self.max:
-                self.message_all_max_strict
+            elif self.max is not None:
+                return self.message_all_max_strict
             else:
-                self.message_all
-        elif self.min:
+                return self.message_all
+        elif self.min is not None:
             # If only min is supplied
             return self.message_min_strict if self.min_strict else self.message_min
-        elif self.max:
+        elif self.max is not None:
             # If only max is supplied
             return self.message_max_strict if self.max_strict else self.message_max
 
