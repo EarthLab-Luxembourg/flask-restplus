@@ -2,7 +2,7 @@ import marshmallow as ma
 
 
 class RangeStrict(ma.validate.Range):
-    """Validator extending marshmallow range default validator but which 
+    """Validator extending marshmallow range default validator but which
     allow to set strict boundaries
     """
     message_min_strict = 'Must be greater than {min}'
@@ -37,14 +37,14 @@ class RangeStrict(ma.validate.Range):
     def __call__(self, value):
         if self.min is not None:
             if self.min_strict and value <= self.min:
-                raise ValidationError(self._format_error(value, self._get_message()))
+                raise ma.ValidationError(self._format_error(value, self._get_message()))
             elif value < self.min:
-                raise ValidationError(self._format_error(value, self._get_message()))
+                raise ma.ValidationError(self._format_error(value, self._get_message()))
 
         if self.max is not None:
             if self.max_strict and value >= self.max:
-                raise ValidationError(self._format_error(value, self._get_message()))
+                raise ma.ValidationError(self._format_error(value, self._get_message()))
             elif value > self.max:
-                raise ValidationError(self._format_error(value, self._get_message()))
+                raise ma.ValidationError(self._format_error(value, self._get_message()))
 
         return value
