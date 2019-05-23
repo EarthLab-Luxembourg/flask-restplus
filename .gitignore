@@ -60,11 +60,9 @@ histograms/
 doc/_build/
 
 # Specifics
-flask_restplus/static
 node_modules
 .idea
 test.py
-/flask_restplus/static/
 
 # IDE
 .vscode/
