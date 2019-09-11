@@ -234,7 +234,7 @@ class Api(object):
                 app_or_blueprint,
                 SwaggerView,
                 self.default_namespace,
-                '/swagger.json',
+                (self._doc or "") + '/swagger.json',
                 endpoint=endpoint,
                 resource_class_args=(self, )
             )
