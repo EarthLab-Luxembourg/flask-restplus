@@ -1,5 +1,8 @@
 from flask import Flask
-from werkzeug.contrib.fixers import ProxyFix
+try:
+    from werkzeug.contrib.fixers import ProxyFix
+except ImportError:
+    from werkzeug.middleware.proxy_fix import ProxyFix
 
 from zoo import api
 
